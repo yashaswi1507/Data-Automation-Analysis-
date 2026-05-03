@@ -62,7 +62,7 @@ if file is not None:
         st.markdown("Cleaned Data Preview")
         st.dataframe(clean_df.head(rows_to_show), use_container_width=True)
         
-        st.markdown("### 📥 Download Cleaned Data")
+        st.markdown("Download Cleaned Data")
 
         csv = clean_df.to_csv(index=False).encode('utf-8')
 

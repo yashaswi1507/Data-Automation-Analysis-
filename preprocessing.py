@@ -13,12 +13,12 @@ class DataPreprocessor:
         duplicate_count = self.df.duplicated().sum()
         null_counts = self.df.isnull().sum()
 
-        self.report.append(f"📊 Total Rows: {total_rows}")
-        self.report.append(f"⚠ Duplicate Rows: {duplicate_count}")
+        self.report.append(f"Total Rows: {total_rows}")
+        self.report.append(f"Duplicate Rows: {duplicate_count}")
 
         for col in null_counts.index:
             if null_counts[col] > 0:
-                self.report.append(f"❗ Missing in '{col}': {null_counts[col]}")
+                self.report.append(f"Missing in '{col}': {null_counts[col]}")
 
         # ================= HANDLE MISSING =================
         for col in self.df.columns:
@@ -44,15 +44,15 @@ class DataPreprocessor:
 
             outliers = ((self.df[col] < lower) | (self.df[col] > upper)).sum()
             if outliers > 0:
-                self.report.append(f"🚨 Outliers in '{col}': {outliers}")
+                self.report.append(f"Outliers in '{col}': {outliers}")
                 outlier_count += outliers
 
         # ================= AFTER CLEANING =================
-        self.report.append("🧹 Data Cleaning Completed")
-        self.report.append("✔ Missing values handled")
-        self.report.append("✔ Duplicates removed")
+        self.report.append("Data Cleaning Completed")
+        self.report.append("Missing values handled")
+        self.report.append("Duplicates removed")
 
         if outlier_count == 0:
-            self.report.append("✔ No significant outliers detected")
+            self.report.append("No significant outliers detected")
 
         return self.df, self.report
