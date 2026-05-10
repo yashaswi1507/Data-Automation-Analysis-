@@ -65,17 +65,15 @@ class DataPreprocessor:
 
         for col in self.df.columns:
 
-            for col in self.df.columns:
+            try:
 
-                try:
+                self.df[col] = pd.to_numeric(
+                    self.df[col]
+                )
 
-                    self.df[col] = pd.to_numeric(
-                        self.df[col]
-                    )
+            except:
 
-                except:
-
-                    pass
+                pass
 
         # =====================================================
         # BEFORE CLEANING REPORT
@@ -174,7 +172,7 @@ class DataPreprocessor:
         )
 
         # =====================================================
-        # GENERIC FEATURE ENGINEERING
+        # FEATURE ENGINEERING
         # =====================================================
 
         columns_to_drop = []
@@ -198,10 +196,6 @@ class DataPreprocessor:
                     self.df[col]
                     .str.contains(r'\d', na=False)
                 )
-
-                # =================================================
-                # HANDLE MIXED TEXT + NUMBER
-                # =================================================
 
                 if (
                     (contains_letters & contains_numbers)
@@ -232,10 +226,6 @@ class DataPreprocessor:
                     self.report.append(
                         f"✔ Split mixed column '{col}' into Type and Number"
                     )
-
-                # =================================================
-                # HANDLE MULTI VALUE TEXT
-                # =================================================
 
                 elif (
                     self.df[col]
@@ -305,8 +295,6 @@ class DataPreprocessor:
                     f"🚨 Outliers in '{col}': {outliers}"
                 )
 
-                # ================= REMOVE =================
-
                 if (
                     self.outlier_option
                     == "Remove Outliers"
@@ -325,8 +313,6 @@ class DataPreprocessor:
                     self.report.append(
                         f"🧹 Removed outliers from '{col}'"
                     )
-
-                # ================= CAP =================
 
                 elif (
                     self.outlier_option
