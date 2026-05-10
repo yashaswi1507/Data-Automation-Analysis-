@@ -29,10 +29,10 @@ class DataPreprocessor:
             inplace=True
         )
 
-        self.df = self.df.applymap(
-            lambda x: np.nan
-            if isinstance(x, str) and x.strip() == ""
-            else x
+        self.df = self.df.replace(
+            r'^\s*$',
+            np.nan,
+            regex=True
         )
 
         # =====================================================
@@ -43,15 +43,15 @@ class DataPreprocessor:
         duplicate_count = self.df.duplicated().sum()
         null_counts = self.df.isnull().sum()
 
-        self.report.append(f"📄 Total Rows: {total_rows}")
-        self.report.append(f"🧩 Duplicate Rows: {duplicate_count}")
+        self.report.append(f"Total Rows: {total_rows}")
+        self.report.append(f"Duplicate Rows: {duplicate_count}")
 
         for col in null_counts.index:
 
             if null_counts[col] > 0:
 
                 self.report.append(
-                    f"❗ Missing in '{col}': {null_counts[col]}"
+                    f"Missing in '{col}': {null_counts[col]}"
                 )
 
         # =====================================================
@@ -127,7 +127,7 @@ class DataPreprocessor:
         removed_duplicates = before_duplicates - len(self.df)
 
         self.report.append(
-            f"🧹 Removed duplicate rows: {removed_duplicates}"
+            f"Removed duplicate rows: {removed_duplicates}"
         )
 
         # =====================================================
@@ -262,7 +262,7 @@ class DataPreprocessor:
                 outlier_count += outliers
 
                 self.report.append(
-                    f"🚨 Outliers in '{col}': {outliers}"
+                    f"Outliers in '{col}': {outliers}"
                 )
 
                 # ================= REMOVE =================
@@ -276,7 +276,7 @@ class DataPreprocessor:
                     ]
 
                     self.report.append(
-                        f"🧹 Removed outliers from '{col}'"
+                        f"Removed outliers from '{col}'"
                     )
 
                 # ================= CAP =================
@@ -289,19 +289,19 @@ class DataPreprocessor:
                     )
 
                     self.report.append(
-                        f"📊 Capped outliers in '{col}'"
+                        f"Capped outliers in '{col}'"
                     )
 
         # =====================================================
         # FINAL REPORT
         # =====================================================
 
-        self.report.append("✅ Data Cleaning Completed")
+        self.report.append("Data Cleaning Completed")
 
         if outlier_count == 0:
 
             self.report.append(
-                "✅ No significant outliers detected"
+                "No significant outliers detected"
             )
 
         return self.df, self.report
