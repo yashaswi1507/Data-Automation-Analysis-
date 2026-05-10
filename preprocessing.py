@@ -85,10 +85,10 @@ class DataPreprocessor:
 
         null_counts = self.df.isnull().sum()
 
-        self.report.append(f"📄 Total Rows: {total_rows}")
+        self.report.append(f"Total Rows: {total_rows}")
 
         self.report.append(
-            f"🧩 Duplicate Rows: {duplicate_count}"
+            f"Duplicate Rows: {duplicate_count}"
         )
 
         for col in null_counts.index:
@@ -96,7 +96,7 @@ class DataPreprocessor:
             if null_counts[col] > 0:
 
                 self.report.append(
-                    f"❗ Missing in '{col}': {null_counts[col]}"
+                    f"Missing in '{col}': {null_counts[col]}"
                 )
 
         # =====================================================
@@ -168,7 +168,7 @@ class DataPreprocessor:
         )
 
         self.report.append(
-            f"🧹 Removed duplicate rows: {removed_duplicates}"
+            f"Removed duplicate rows: {removed_duplicates}"
         )
 
         # =====================================================
@@ -292,7 +292,7 @@ class DataPreprocessor:
                 outlier_count += outliers
 
                 self.report.append(
-                    f"🚨 Outliers in '{col}': {outliers}"
+                    f"Outliers in '{col}': {outliers}"
                 )
 
                 if (
@@ -311,7 +311,7 @@ class DataPreprocessor:
                     ]
 
                     self.report.append(
-                        f"🧹 Removed outliers from '{col}'"
+                        f"Removed outliers from '{col}'"
                     )
 
                 elif (
@@ -325,7 +325,7 @@ class DataPreprocessor:
                     )
 
                     self.report.append(
-                        f"📊 Capped outliers in '{col}'"
+                        f"Capped outliers in '{col}'"
                     )
 
         # =====================================================
@@ -333,13 +333,13 @@ class DataPreprocessor:
         # =====================================================
 
         self.report.append(
-            "✅ Data Cleaning Completed"
+            "Data Cleaning Completed"
         )
 
         if outlier_count == 0:
 
             self.report.append(
-                "✅ No significant outliers detected"
+                "No significant outliers detected"
             )
 
         return self.df, self.report
