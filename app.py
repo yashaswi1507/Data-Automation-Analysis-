@@ -14,9 +14,24 @@ file = st.file_uploader("Upload CSV File", type=["csv"])
 
 if file is not None:
     df = pd.read_csv(file)
+   
+    # ================= SIDEBAR =================
+    st.sidebar.title("Controls")
 
+    st.sidebar.markdown("Data Cleaning Options")
+    
+    outlier_option = st.sidebar.selectbox(
+        "Handle Outliers",
+        ["No Action", "Remove Outliers", "Cap Outliers"]
+    )
+    
+    missing_option = st.sidebar.selectbox(
+    "Handle Missing Values",
+    ["Mean", "Median", "Mode", "Drop Rows"]
+    )   
+    
     # PREPROCESSING
-    processor = DataPreprocessor(df)
+    processor = DataPreprocessor(df, outlier_option, missing_option)
     clean_df, report = processor.process()
 
     # SIDEBAR FILTER
