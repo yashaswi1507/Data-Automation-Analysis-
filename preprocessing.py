@@ -23,11 +23,6 @@ class DataPreprocessor:
         # CONVERT WEIRD MISSING VALUES TO NaN
         # =====================================================
 
-        self.df.replace(
-            ["?", "", " ", "NA", "N/A", "null", "--"],
-            np.nan,
-            inplace=True
-        )
 
         self.df = self.df.replace(
             r'^\s*$',
