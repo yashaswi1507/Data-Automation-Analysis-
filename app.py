@@ -42,14 +42,17 @@ if file is not None:
     # LOAD DATA
     # =====================================================
 
-    df = pd.read_csv(
+    # ORIGINAL RAW DATA
+
+    raw_df = pd.read_csv(
     file,
-    dtype=str,
-    keep_default_na=False,
-    na_filter=False,
     encoding="latin1"
 )
 
+    # COPY FOR CLEANING
+
+    df = raw_df.copy()
+    
     # =====================================================
     # SIDEBAR
     # =====================================================
@@ -181,7 +184,7 @@ if file is not None:
         )
 
         st.dataframe(
-            df.head(rows_to_show),
+            raw_df.head(rows_to_show),
             use_container_width=True
         )
 
