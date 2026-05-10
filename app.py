@@ -42,7 +42,24 @@ if file is not None:
     # LOAD DATA
     # =====================================================
 
-    df = pd.read_csv(file)
+    df = pd.read_csv(
+
+    file,
+
+    na_values=[
+        "?",
+        "NA",
+        "N/A",
+        "null",
+        "NULL",
+        "--",
+        " ",
+        ""
+    ],
+
+    keep_default_na=True,
+    encoding='latin1'
+)
 
     # =====================================================
     # SIDEBAR
