@@ -60,14 +60,13 @@ class DataPreprocessor:
         )
 
         # =====================================================
-        # TRY CONVERTING NUMERIC COLUMNS
+        # CONVERT MOSTLY NUMERIC COLUMNS
         # =====================================================
 
         for col in self.df.columns:
 
             try:
 
-                # Only convert if MOST values are numeric
                 numeric_check = pd.to_numeric(
                     self.df[col],
                     errors='coerce'
@@ -75,7 +74,7 @@ class DataPreprocessor:
 
                 ratio = numeric_check.notna().mean()
 
-                # Convert only if 80%+ numeric
+                # Convert only if mostly numeric
                 if ratio > 0.8:
 
                     self.df[col] = numeric_check
@@ -83,6 +82,7 @@ class DataPreprocessor:
             except:
 
                 pass
+
         # =====================================================
         # BEFORE CLEANING REPORT
         # =====================================================
@@ -153,9 +153,19 @@ class DataPreprocessor:
 
                 else:
 
-                    self.df[col] = self.df[col].fillna(
-                        self.df[col].mode()[0]
-                    )
+                    mode_value = self.df[col].mode()
+
+                    if len(mode_value) > 0:
+
+                        self.df[col] = self.df[col].fillna(
+                            mode_value[0]
+                        )
+
+                    else:
+
+                        self.df[col] = self.df[col].fillna(
+                            "Unknown"
+                        )
 
                     method_used = "Mode"
 
@@ -189,39 +199,59 @@ class DataPreprocessor:
 
             if self.df[col].dtype == "object":
 
-                self.df[col] = (
+                temp_col = (
                     self.df[col]
                     .astype(str)
                     .str.strip()
                 )
 
-                contains_letters = (
-                    self.df[col]
-                    .str.contains(r'[A-Za-z]', na=False)
+                contains_letters = temp_col.str.contains(
+                    r'[A-Za-z]',
+                    regex=True,
+                    na=False
                 )
 
-                contains_numbers = (
-                    self.df[col]
-                    .str.contains(r'\d', na=False)
+                contains_numbers = temp_col.str.contains(
+                    r'\d',
+                    regex=True,
+                    na=False
                 )
+
+                # =================================================
+                # HANDLE MIXED TEXT + NUMBER COLUMNS
+                # Example:
+                # PC 17599
+                # A/5 21171
+                # C85
+                # =================================================
 
                 if (
                     (contains_letters & contains_numbers)
                     .mean() > 0.2
                 ):
 
+                    # ================= TYPE COLUMN =================
+
                     self.df[f"{col}_Type"] = (
-                        self.df[col]
+
+                        temp_col
                         .str.extract(
                             r'([A-Za-z./]+)',
                             expand=False
                         )
+
+                    )
+
+                    self.df[f"{col}_Type"] = (
+                        self.df[f"{col}_Type"]
                         .fillna("NUM")
                     )
 
+                    # ================= NUMBER COLUMN =================
+
                     self.df[f"{col}_Number"] = pd.to_numeric(
 
-                        self.df[col].str.extract(
+                        temp_col.str.extract(
                             r'(\d+)',
                             expand=False
                         ),
@@ -229,20 +259,26 @@ class DataPreprocessor:
                         errors='coerce'
                     )
 
+                    # ================= DROP ORIGINAL =================
+
                     columns_to_drop.append(col)
 
                     self.report.append(
                         f"✔ Split mixed column '{col}' into Type and Number"
                     )
 
+                # =================================================
+                # HANDLE MULTI VALUE TEXT
+                # =================================================
+
                 elif (
-                    self.df[col]
+                    temp_col
                     .str.contains(" ", na=False)
                     .mean() > 0.3
                 ):
 
                     self.df[col] = (
-                        self.df[col]
+                        temp_col
                         .str.split()
                         .str[0]
                     )
@@ -303,6 +339,8 @@ class DataPreprocessor:
                     f"Outliers in '{col}': {outliers}"
                 )
 
+                # ================= REMOVE =================
+
                 if (
                     self.outlier_option
                     == "Remove Outliers"
@@ -321,6 +359,8 @@ class DataPreprocessor:
                     self.report.append(
                         f"Removed outliers from '{col}'"
                     )
+
+                # ================= CAP =================
 
                 elif (
                     self.outlier_option
