@@ -43,22 +43,13 @@ if file is not None:
     # =====================================================
 
     df = pd.read_csv(
-
     file,
 
-    na_values=[
-        "?",
-        "NA",
-        "N/A",
-        "null",
-        "NULL",
-        "--",
-        " ",
-        ""
-    ],
+    dtype=str,
 
-    keep_default_na=True,
-    encoding='latin1'
+    keep_default_na=False,
+
+    encoding="latin1"
 )
 
     # =====================================================

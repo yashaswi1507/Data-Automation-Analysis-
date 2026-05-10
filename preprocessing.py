@@ -20,9 +20,33 @@ class DataPreprocessor:
     def process(self):
 
         # =====================================================
-        # CONVERT WEIRD MISSING VALUES TO NaN
+        # CLEAN STRINGS
         # =====================================================
 
+        self.df = self.df.apply(
+            lambda col: col.str.strip()
+            if col.dtype == "object"
+            else col
+        )
+
+        # =====================================================
+        # CONVERT WEIRD VALUES TO NaN
+        # =====================================================
+
+        self.df.replace(
+            [
+                "?",
+                "",
+                " ",
+                "NA",
+                "N/A",
+                "null",
+                "NULL",
+                "--"
+            ],
+            np.nan,
+            inplace=True
+        )
 
         self.df = self.df.replace(
             r'^\s*$',
@@ -31,22 +55,43 @@ class DataPreprocessor:
         )
 
         # =====================================================
+        # TRY CONVERTING NUMERIC COLUMNS
+        # =====================================================
+
+        for col in self.df.columns:
+
+            try:
+
+                self.df[col] = pd.to_numeric(
+                    self.df[col]
+                )
+
+            except:
+
+                pass
+
+        # =====================================================
         # BEFORE CLEANING REPORT
         # =====================================================
 
         total_rows = len(self.df)
+
         duplicate_count = self.df.duplicated().sum()
+
         null_counts = self.df.isnull().sum()
 
-        self.report.append(f"Total Rows: {total_rows}")
-        self.report.append(f"Duplicate Rows: {duplicate_count}")
+        self.report.append(f"📄 Total Rows: {total_rows}")
+
+        self.report.append(
+            f"🧩 Duplicate Rows: {duplicate_count}"
+        )
 
         for col in null_counts.index:
 
             if null_counts[col] > 0:
 
                 self.report.append(
-                    f"Missing in '{col}': {null_counts[col]}"
+                    f"❗ Missing in '{col}': {null_counts[col]}"
                 )
 
         # =====================================================
@@ -59,50 +104,44 @@ class DataPreprocessor:
 
             if missing > 0:
 
-                # ================= NUMERICAL =================
+                # ================= NUMERIC =================
 
-                if self.df[col].dtype in ['int64', 'float64']:
+                if pd.api.types.is_numeric_dtype(
+                    self.df[col]
+                ):
 
                     if self.missing_option == "Mean":
 
-                        self.df[col].fillna(
-                            self.df[col].mean(),
-                            inplace=True
-                        )
-
+                        fill_value = self.df[col].mean()
                         method_used = "Mean"
 
                     elif self.missing_option == "Median":
 
-                        self.df[col].fillna(
-                            self.df[col].median(),
-                            inplace=True
-                        )
-
+                        fill_value = self.df[col].median()
                         method_used = "Median"
 
                     elif self.missing_option == "Mode":
 
-                        self.df[col].fillna(
-                            self.df[col].mode()[0],
-                            inplace=True
-                        )
-
+                        fill_value = self.df[col].mode()[0]
                         method_used = "Mode"
 
                     elif self.missing_option == "Drop Rows":
 
                         self.df.dropna(inplace=True)
-
                         method_used = "Drop Rows"
+
+                    if self.missing_option != "Drop Rows":
+
+                        self.df[col] = self.df[col].fillna(
+                            fill_value
+                        )
 
                 # ================= CATEGORICAL =================
 
                 else:
 
-                    self.df[col].fillna(
-                        self.df[col].mode()[0],
-                        inplace=True
+                    self.df[col] = self.df[col].fillna(
+                        self.df[col].mode()[0]
                     )
 
                     method_used = "Mode"
@@ -119,10 +158,12 @@ class DataPreprocessor:
 
         self.df.drop_duplicates(inplace=True)
 
-        removed_duplicates = before_duplicates - len(self.df)
+        removed_duplicates = (
+            before_duplicates - len(self.df)
+        )
 
         self.report.append(
-            f"Removed duplicate rows: {removed_duplicates}"
+            f"🧹 Removed duplicate rows: {removed_duplicates}"
         )
 
         # =====================================================
@@ -133,7 +174,8 @@ class DataPreprocessor:
 
         for col in self.df.columns:
 
-            # ONLY OBJECT/TEXT COLUMNS
+            # ONLY OBJECT COLUMNS
+
             if self.df[col].dtype == "object":
 
                 self.df[col] = (
@@ -142,41 +184,37 @@ class DataPreprocessor:
                     .str.strip()
                 )
 
-                contains_letters = self.df[col].str.contains(
-                    r'[A-Za-z]',
-                    na=False
+                contains_letters = (
+                    self.df[col]
+                    .str.contains(r'[A-Za-z]', na=False)
                 )
 
-                contains_numbers = self.df[col].str.contains(
-                    r'\d',
-                    na=False
+                contains_numbers = (
+                    self.df[col]
+                    .str.contains(r'\d', na=False)
                 )
 
                 # =================================================
-                # HANDLE MIXED TEXT + NUMBER COLUMNS
-                # Examples:
-                # "A/5 21171"
-                # "B56"
-                # "PC 17599"
+                # HANDLE MIXED TEXT + NUMBER
                 # =================================================
 
                 if (
-                    (contains_letters & contains_numbers).mean() > 0.2
+                    (contains_letters & contains_numbers)
+                    .mean() > 0.2
                 ):
 
-                    # ================= TYPE COLUMN =================
-
-                    self.df[f"{col}_Type"] = self.df[col].str.extract(
-                        r'([A-Za-z./]+)',
-                        expand=False
-                    )
+                    # TYPE COLUMN
 
                     self.df[f"{col}_Type"] = (
-                        self.df[f"{col}_Type"]
+                        self.df[col]
+                        .str.extract(
+                            r'([A-Za-z./]+)',
+                            expand=False
+                        )
                         .fillna("NUM")
                     )
 
-                    # ================= NUMBER COLUMN =================
+                    # NUMBER COLUMN
 
                     self.df[f"{col}_Number"] = pd.to_numeric(
 
@@ -188,8 +226,6 @@ class DataPreprocessor:
                         errors='coerce'
                     )
 
-                    # ================= MARK ORIGINAL COLUMN =================
-
                     columns_to_drop.append(col)
 
                     self.report.append(
@@ -198,14 +234,13 @@ class DataPreprocessor:
 
                 # =================================================
                 # HANDLE MULTI VALUE TEXT
-                # Example:
-                # "New York USA" -> "New"
                 # =================================================
 
-                elif self.df[col].str.contains(
-                    " ",
-                    na=False
-                ).mean() > 0.3:
+                elif (
+                    self.df[col]
+                    .str.contains(" ", na=False)
+                    .mean() > 0.3
+                ):
 
                     self.df[col] = (
                         self.df[col]
@@ -234,22 +269,31 @@ class DataPreprocessor:
 
         outlier_count = 0
 
-        for col in self.df.select_dtypes(include='number').columns:
+        numeric_cols = self.df.select_dtypes(
+            include='number'
+        ).columns
+
+        for col in numeric_cols:
 
             Q1 = self.df[col].quantile(0.25)
+
             Q3 = self.df[col].quantile(0.75)
 
             IQR = Q3 - Q1
 
             lower = Q1 - 1.5 * IQR
+
             upper = Q3 + 1.5 * IQR
 
             outliers = (
+
                 (
                     (self.df[col] < lower)
                     |
                     (self.df[col] > upper)
+
                 ).sum()
+
             )
 
             if outliers > 0:
@@ -257,26 +301,36 @@ class DataPreprocessor:
                 outlier_count += outliers
 
                 self.report.append(
-                    f"Outliers in '{col}': {outliers}"
+                    f"🚨 Outliers in '{col}': {outliers}"
                 )
 
                 # ================= REMOVE =================
 
-                if self.outlier_option == "Remove Outliers":
+                if (
+                    self.outlier_option
+                    == "Remove Outliers"
+                ):
 
                     self.df = self.df[
+
                         (self.df[col] >= lower)
+
                         &
+
                         (self.df[col] <= upper)
+
                     ]
 
                     self.report.append(
-                        f"Removed outliers from '{col}'"
+                        f"🧹 Removed outliers from '{col}'"
                     )
 
                 # ================= CAP =================
 
-                elif self.outlier_option == "Cap Outliers":
+                elif (
+                    self.outlier_option
+                    == "Cap Outliers"
+                ):
 
                     self.df[col] = self.df[col].clip(
                         lower,
@@ -284,19 +338,21 @@ class DataPreprocessor:
                     )
 
                     self.report.append(
-                        f"Capped outliers in '{col}'"
+                        f"📊 Capped outliers in '{col}'"
                     )
 
         # =====================================================
         # FINAL REPORT
         # =====================================================
 
-        self.report.append("Data Cleaning Completed")
+        self.report.append(
+            "✅ Data Cleaning Completed"
+        )
 
         if outlier_count == 0:
 
             self.report.append(
-                "No significant outliers detected"
+                "✅ No significant outliers detected"
             )
 
         return self.df, self.report
