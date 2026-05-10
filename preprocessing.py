@@ -65,21 +65,24 @@ class DataPreprocessor:
 
         for col in self.df.columns:
 
-            # Skip object columns
-            if self.df[col].dtype == "object":
-
-                continue
-
             try:
 
-                self.df[col] = pd.to_numeric(
-                    self.df[col]
+                # Only convert if MOST values are numeric
+                numeric_check = pd.to_numeric(
+                    self.df[col],
+                    errors='coerce'
                 )
+
+                ratio = numeric_check.notna().mean()
+
+                # Convert only if 80%+ numeric
+                if ratio > 0.8:
+
+                    self.df[col] = numeric_check
 
             except:
 
                 pass
-
         # =====================================================
         # BEFORE CLEANING REPORT
         # =====================================================
