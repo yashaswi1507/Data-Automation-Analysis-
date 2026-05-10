@@ -65,6 +65,11 @@ class DataPreprocessor:
 
         for col in self.df.columns:
 
+            # Skip object columns
+            if self.df[col].dtype == "object":
+
+                continue
+
             try:
 
                 self.df[col] = pd.to_numeric(
