@@ -65,10 +65,17 @@ class DataPreprocessor:
 
         for col in self.df.columns:
 
-            self.df[col] = pd.to_numeric(
-                self.df[col],
-                errors='ignore'
-            )
+            for col in self.df.columns:
+
+                try:
+
+                    self.df[col] = pd.to_numeric(
+                        self.df[col]
+                    )
+
+                except:
+
+                    pass
 
         # =====================================================
         # BEFORE CLEANING REPORT
