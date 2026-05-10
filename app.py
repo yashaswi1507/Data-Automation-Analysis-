@@ -44,11 +44,7 @@ if file is not None:
 
     df = pd.read_csv(
     file,
-
-    dtype=str,
-
-    keep_default_na=False,
-
+    keep_default_na=True,
     encoding="latin1"
 )
 

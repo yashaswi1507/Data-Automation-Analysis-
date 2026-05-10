@@ -20,14 +20,16 @@ class DataPreprocessor:
     def process(self):
 
         # =====================================================
-        # CLEAN STRINGS
+        # CLEAN OBJECT COLUMNS
         # =====================================================
 
-        self.df = self.df.apply(
-            lambda col: col.str.strip()
-            if col.dtype == "object"
-            else col
-        )
+        for col in self.df.select_dtypes(include='object').columns:
+
+            self.df[col] = (
+                self.df[col]
+                .astype(str)
+                .str.strip()
+            )
 
         # =====================================================
         # CONVERT WEIRD VALUES TO NaN
@@ -42,16 +44,19 @@ class DataPreprocessor:
                 "N/A",
                 "null",
                 "NULL",
-                "--"
+                "--",
+                "nan",
+                "NaN"
             ],
             np.nan,
             inplace=True
         )
 
-        self.df = self.df.replace(
+        self.df.replace(
             r'^\s*$',
             np.nan,
-            regex=True
+            regex=True,
+            inplace=True
         )
 
         # =====================================================
@@ -60,15 +65,10 @@ class DataPreprocessor:
 
         for col in self.df.columns:
 
-            try:
-
-                self.df[col] = pd.to_numeric(
-                    self.df[col]
-                )
-
-            except:
-
-                pass
+            self.df[col] = pd.to_numeric(
+                self.df[col],
+                errors='ignore'
+            )
 
         # =====================================================
         # BEFORE CLEANING REPORT
@@ -174,8 +174,6 @@ class DataPreprocessor:
 
         for col in self.df.columns:
 
-            # ONLY OBJECT COLUMNS
-
             if self.df[col].dtype == "object":
 
                 self.df[col] = (
@@ -203,8 +201,6 @@ class DataPreprocessor:
                     .mean() > 0.2
                 ):
 
-                    # TYPE COLUMN
-
                     self.df[f"{col}_Type"] = (
                         self.df[col]
                         .str.extract(
@@ -213,8 +209,6 @@ class DataPreprocessor:
                         )
                         .fillna("NUM")
                     )
-
-                    # NUMBER COLUMN
 
                     self.df[f"{col}_Number"] = pd.to_numeric(
 
