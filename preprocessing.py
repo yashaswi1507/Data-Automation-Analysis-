@@ -60,6 +60,15 @@ class DataPreprocessor:
         )
 
         # =====================================================
+        # SAVE ORIGINAL MISSING VALUES
+        # =====================================================
+
+        self.original_null_counts = self.df.isnull().sum()
+        self.total_missing_before = (
+            self.original_null_counts.sum()
+        )
+
+        # =====================================================
         # FEATURE ENGINEERING FIRST
         # =====================================================
 
@@ -75,31 +84,39 @@ class DataPreprocessor:
                     .str.strip()
                 )
 
-                # Ignore NaN strings
+                # Ignore fake NaN strings
                 temp_col = temp_col.replace(
                     ["nan", "None"],
                     np.nan
                 )
 
                 contains_letters = temp_col.str.contains(
-                r'[A-Za-z]',
-                regex=True,
-                na=False
+                    r'[A-Za-z]',
+                    regex=True,
+                    na=False
                 )
 
                 contains_numbers = temp_col.str.contains(
-                r'\d',
-                regex=True,
-                na=False
+                    r'\d',
+                    regex=True,
+                    na=False
                 )
 
-            # If column has BOTH letters and numbers anywhere
                 has_letters = contains_letters.any()
                 has_numbers = contains_numbers.any()
 
+                # =================================================
+                # HANDLE MIXED COLUMNS
+                # Example:
+                # PC 17599
+                # C85
+                # A/5 21171
+                # =================================================
+
                 if has_letters and has_numbers:
 
-                    # TEXT PART
+                    # ================= TYPE COLUMN =================
+
                     self.df[f"{col}_Type"] = (
 
                         temp_col
@@ -112,10 +129,11 @@ class DataPreprocessor:
 
                     self.df[f"{col}_Type"] = (
                         self.df[f"{col}_Type"]
-                        .fillna("NUM")
+                        .fillna("Unknown")
                     )
 
-                    # NUMBER PART
+                    # ================= NUMBER COLUMN =================
+
                     number_col = pd.to_numeric(
 
                         temp_col
@@ -126,10 +144,12 @@ class DataPreprocessor:
 
                         errors='coerce'
                     )
+
+                    # Preserve missing values
                     number_col = number_col.fillna(-1)
-                    
+
                     self.df[f"{col}_Number"] = number_col
-                    
+
                     # Missing flag
                     self.df[f"{col}_Missing"] = (
                         self.df[f"{col}_Number"] == -1
@@ -204,20 +224,24 @@ class DataPreprocessor:
 
         duplicate_count = self.df.duplicated().sum()
 
-        null_counts = self.df.isnull().sum()
-
-        self.report.append(f"Total Rows: {total_rows}")
+        self.report.append(
+            f"Total Rows: {total_rows}"
+        )
 
         self.report.append(
             f"Duplicate Rows: {duplicate_count}"
         )
 
-        for col in null_counts.index:
+        self.report.append(
+            f"Total Missing Values Before Cleaning: {self.total_missing_before}"
+        )
 
-            if null_counts[col] > 0:
+        for col in self.original_null_counts.index:
+
+            if self.original_null_counts[col] > 0:
 
                 self.report.append(
-                    f"Missing in '{col}': {null_counts[col]}"
+                    f"Missing in '{col}': {self.original_null_counts[col]}"
                 )
 
         # =====================================================
@@ -229,16 +253,24 @@ class DataPreprocessor:
             missing = self.df[col].isnull().sum()
 
             if missing > 0:
-                
+
+                # =================================================
+                # ENGINEERED NUMBER COLUMNS
+                # =================================================
+
                 if col.endswith("_Number"):
 
-                    self.df[col] = self.df[col].fillna(-1)
+                    self.df[col] = (
+                        self.df[col]
+                        .fillna(-1)
+                    )
 
                     self.report.append(
                         f"✔ Filled engineered column '{col}' with -1"
                     )
 
                     continue
+
                 # ================= NUMERIC =================
 
                 if pd.api.types.is_numeric_dtype(
@@ -404,4 +436,3 @@ class DataPreprocessor:
             )
 
         return self.df, self.report
-
