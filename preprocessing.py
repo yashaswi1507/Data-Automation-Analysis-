@@ -126,7 +126,9 @@ class DataPreprocessor:
 
                         errors='coerce'
                     )
-                    self.df[f"{col}_Number"] = number_col.fillna(-1)
+                    number_col = number_col.fillna(-1)
+                    
+                    self.df[f"{col}_Number"] = number_col
                     
                     # Missing flag
                     self.df[f"{col}_Missing"] = (
