@@ -53,6 +53,8 @@ if file is not None:
 # ================= FILE =================
 
     if raw_df is not None:
+        
+        df = raw_df.copy()
 
         if file.name.endswith(".csv"):
 
@@ -80,8 +82,6 @@ if file is not None:
             raw_df = tables[0]
 
     # COPY FOR CLEANING
-
-    df = raw_df.copy()
     
     # =====================================================
     # SIDEBAR
