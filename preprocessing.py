@@ -387,3 +387,4 @@ class DataPreprocessor:
             )
 
         return self.df, self.report
+
