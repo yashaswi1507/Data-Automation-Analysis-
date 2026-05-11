@@ -61,11 +61,47 @@ if file is not None:
             raw_df = pd.read_csv(
                 file,
                 encoding="latin1"
+                
             )
 
         elif file.name.endswith(".xlsx"):
 
             raw_df = pd.read_excel(file)
+            
+        st.sidebar.title("Controls")
+
+        # ================= CLEANING OPTIONS =================
+
+        st.sidebar.subheader("Data Cleaning")
+
+        outlier_option = st.sidebar.selectbox(
+            "Handle Outliers",
+            [
+                "No Action",
+                "Remove Outliers",
+                "Cap Outliers"
+            ]
+        )
+
+        missing_option = st.sidebar.selectbox(
+            "Handle Missing Values",
+            [
+                "Mean",
+                "Median",
+                "Mode",
+                "Drop Rows"
+            ]
+        )
+                
+        processor = DataPreprocessor(
+                df,
+                outlier_option,
+                missing_option
+        )
+
+        clean_df, report = processor.process()
+        
+        
 
     # ================= URL =================
 
@@ -80,6 +116,8 @@ if file is not None:
             tables = pd.read_html(dataset_url)
 
             raw_df = tables[0]
+            
+    
 
     # COPY FOR CLEANING
     
@@ -111,22 +149,6 @@ if file is not None:
             "Drop Rows"
         ]
     )
-
-    # =====================================================
-    # PREPROCESSING
-    # =====================================================
-
-    processor = DataPreprocessor(
-        df,
-        outlier_option,
-        missing_option
-    )
-
-    clean_df, report = processor.process()
-
-    # =====================================================
-    # SIDEBAR FILTERS
-    # =====================================================
 
     st.sidebar.subheader("Filters")
 
