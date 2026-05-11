@@ -67,7 +67,7 @@ class DataPreprocessor:
 
         for col in self.df.columns:
 
-            if self.df[col].dtype == "object":
+            if pd.api.types.is_string_dtype(self.df[col]):
 
                 temp_col = (
                     self.df[col]
