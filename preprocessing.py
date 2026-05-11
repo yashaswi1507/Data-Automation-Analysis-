@@ -82,27 +82,22 @@ class DataPreprocessor:
                 )
 
                 contains_letters = temp_col.str.contains(
-                    r'[A-Za-z]',
-                    regex=True,
-                    na=False
+                r'[A-Za-z]',
+                regex=True,
+                na=False
                 )
 
                 contains_numbers = temp_col.str.contains(
-                    r'\d',
-                    regex=True,
-                    na=False
+                r'\d',
+                regex=True,
+                na=False
                 )
 
-                mixed_ratio = (
-                    (contains_letters & contains_numbers)
-                    .mean()
-                )
+            # If column has BOTH letters and numbers anywhere
+                has_letters = contains_letters.any()
+                has_numbers = contains_numbers.any()
 
-                # =================================================
-                # HANDLE MIXED TEXT + NUMBER COLUMNS
-                # =================================================
-
-                if mixed_ratio > 0.2:
+                if has_letters and has_numbers:
 
                     # TEXT PART
                     self.df[f"{col}_Type"] = (
