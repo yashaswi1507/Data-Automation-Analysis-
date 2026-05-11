@@ -60,6 +60,116 @@ class DataPreprocessor:
         )
 
         # =====================================================
+        # FEATURE ENGINEERING FIRST
+        # =====================================================
+
+        columns_to_drop = []
+
+        for col in self.df.columns:
+
+            if self.df[col].dtype == "object":
+
+                temp_col = (
+                    self.df[col]
+                    .astype(str)
+                    .str.strip()
+                )
+
+                # Ignore NaN strings
+                temp_col = temp_col.replace(
+                    ["nan", "None"],
+                    np.nan
+                )
+
+                contains_letters = temp_col.str.contains(
+                    r'[A-Za-z]',
+                    regex=True,
+                    na=False
+                )
+
+                contains_numbers = temp_col.str.contains(
+                    r'\d',
+                    regex=True,
+                    na=False
+                )
+
+                mixed_ratio = (
+                    (contains_letters & contains_numbers)
+                    .mean()
+                )
+
+                # =================================================
+                # HANDLE MIXED TEXT + NUMBER COLUMNS
+                # =================================================
+
+                if mixed_ratio > 0.2:
+
+                    # TEXT PART
+                    self.df[f"{col}_Type"] = (
+
+                        temp_col
+                        .str.extract(
+                            r'([A-Za-z./]+)',
+                            expand=False
+                        )
+
+                    )
+
+                    self.df[f"{col}_Type"] = (
+                        self.df[f"{col}_Type"]
+                        .fillna("NUM")
+                    )
+
+                    # NUMBER PART
+                    self.df[f"{col}_Number"] = pd.to_numeric(
+
+                        temp_col
+                        .str.extract(
+                            r'(\d+)',
+                            expand=False
+                        ),
+
+                        errors='coerce'
+                    )
+
+                    columns_to_drop.append(col)
+
+                    self.report.append(
+                        f"✔ Split mixed column '{col}' into Type and Number"
+                    )
+
+                # =================================================
+                # HANDLE MULTI VALUE TEXT
+                # =================================================
+
+                elif (
+                    temp_col
+                    .str.contains(" ", na=False)
+                    .mean() > 0.3
+                ):
+
+                    self.df[col] = (
+                        temp_col
+                        .str.split()
+                        .str[0]
+                    )
+
+                    self.report.append(
+                        f"✔ Simplified multi-value column '{col}'"
+                    )
+
+        # =====================================================
+        # DROP ORIGINAL MIXED COLUMNS
+        # =====================================================
+
+        if columns_to_drop:
+
+            self.df.drop(
+                columns=columns_to_drop,
+                inplace=True
+            )
+
+        # =====================================================
         # CONVERT MOSTLY NUMERIC COLUMNS
         # =====================================================
 
@@ -188,115 +298,6 @@ class DataPreprocessor:
         self.report.append(
             f"Removed duplicate rows: {removed_duplicates}"
         )
-
-        # =====================================================
-        # FEATURE ENGINEERING
-        # =====================================================
-
-        columns_to_drop = []
-
-        for col in self.df.columns:
-
-            if self.df[col].dtype == "object":
-
-                temp_col = (
-                    self.df[col]
-                    .astype(str)
-                    .str.strip()
-                )
-
-                contains_letters = temp_col.str.contains(
-                    r'[A-Za-z]',
-                    regex=True,
-                    na=False
-                )
-
-                contains_numbers = temp_col.str.contains(
-                    r'\d',
-                    regex=True,
-                    na=False
-                )
-
-                # =================================================
-                # HANDLE MIXED TEXT + NUMBER COLUMNS
-                # Example:
-                # PC 17599
-                # A/5 21171
-                # C85
-                # =================================================
-
-                if (
-                    (contains_letters & contains_numbers)
-                    .mean() > 0.2
-                ):
-
-                    # ================= TYPE COLUMN =================
-
-                    self.df[f"{col}_Type"] = (
-
-                        temp_col
-                        .str.extract(
-                            r'([A-Za-z./]+)',
-                            expand=False
-                        )
-
-                    )
-
-                    self.df[f"{col}_Type"] = (
-                        self.df[f"{col}_Type"]
-                        .fillna("NUM")
-                    )
-
-                    # ================= NUMBER COLUMN =================
-
-                    self.df[f"{col}_Number"] = pd.to_numeric(
-
-                        temp_col.str.extract(
-                            r'(\d+)',
-                            expand=False
-                        ),
-
-                        errors='coerce'
-                    )
-
-                    # ================= DROP ORIGINAL =================
-
-                    columns_to_drop.append(col)
-
-                    self.report.append(
-                        f"✔ Split mixed column '{col}' into Type and Number"
-                    )
-
-                # =================================================
-                # HANDLE MULTI VALUE TEXT
-                # =================================================
-
-                elif (
-                    temp_col
-                    .str.contains(" ", na=False)
-                    .mean() > 0.3
-                ):
-
-                    self.df[col] = (
-                        temp_col
-                        .str.split()
-                        .str[0]
-                    )
-
-                    self.report.append(
-                        f"✔ Simplified multi-value column '{col}'"
-                    )
-
-        # =====================================================
-        # DROP ORIGINAL MIXED COLUMNS
-        # =====================================================
-
-        if columns_to_drop:
-
-            self.df.drop(
-                columns=columns_to_drop,
-                inplace=True
-            )
 
         # =====================================================
         # OUTLIER HANDLING
