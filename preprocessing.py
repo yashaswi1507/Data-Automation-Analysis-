@@ -116,7 +116,7 @@ class DataPreprocessor:
                     )
 
                     # NUMBER PART
-                    self.df[f"{col}_Number"] = pd.to_numeric(
+                    number_col = pd.to_numeric(
 
                         temp_col
                         .str.extract(
