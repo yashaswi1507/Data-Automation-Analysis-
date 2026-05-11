@@ -398,3 +398,267 @@ if raw_df is not None:
                 fig,
                 use_container_width=True
             )
+# =================================================
+        # LINE CHART
+        # =================================================
+
+        elif chart_type == "Line Chart":
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                x_col = st.selectbox(
+                    "Select X-axis",
+                    all_columns
+                )
+
+            with col2:
+                y_col = st.selectbox(
+                    "Select Y-axis",
+                    numeric_cols
+                )
+
+            fig = px.line(
+                filtered_df,
+                x=x_col,
+                y=y_col,
+                title=f"{y_col} Trend"
+            )
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True
+            )
+
+        # =================================================
+        # SCATTER PLOT
+        # =================================================
+
+        elif chart_type == "Scatter Plot":
+
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                x_col = st.selectbox(
+                    "Select X-axis",
+                    numeric_cols
+                )
+
+            with col2:
+                y_col = st.selectbox(
+                    "Select Y-axis",
+                    numeric_cols,
+                    index=1 if len(numeric_cols) > 1 else 0
+                )
+
+            with col3:
+                color_col = st.selectbox(
+                    "Color By",
+                    categorical_cols
+                )
+
+            fig = px.scatter(
+                filtered_df,
+                x=x_col,
+                y=y_col,
+                color=color_col,
+                title=f"{x_col} vs {y_col}"
+            )
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True
+            )
+
+        # =================================================
+        # HISTOGRAM
+        # =================================================
+
+        elif chart_type == "Histogram":
+
+            col = st.selectbox(
+                "Select Column",
+                numeric_cols
+            )
+
+            fig = px.histogram(
+                filtered_df,
+                x=col,
+                title=f"Distribution of {col}"
+            )
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True
+            )
+
+        # =================================================
+        # BOX PLOT
+        # =================================================
+
+        elif chart_type == "Box Plot":
+
+            col = st.selectbox(
+                "Select Column",
+                numeric_cols
+            )
+
+            fig = px.box(
+                filtered_df,
+                y=col,
+                title=f"Box Plot of {col}"
+            )
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True
+            )
+
+        # =================================================
+        # PIE CHART
+        # =================================================
+
+        elif chart_type == "Pie Chart":
+
+            col = st.selectbox(
+                "Select Category",
+                categorical_cols
+            )
+
+            pie_data = (
+                filtered_df[col]
+                .value_counts()
+                .reset_index()
+            )
+
+            pie_data.columns = [col, "Count"]
+
+            fig = px.pie(
+                pie_data,
+                names=col,
+                values="Count",
+                title=f"{col} Distribution"
+            )
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True
+            )
+
+        # =================================================
+        # CORRELATION HEATMAP
+        # =================================================
+
+        elif chart_type == "Correlation Heatmap":
+
+            corr = filtered_df[numeric_cols].corr()
+
+            fig = px.imshow(
+                corr,
+                text_auto=True,
+                title="Correlation Heatmap"
+            )
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True
+            )
+
+    # =====================================================
+    # QUERY ENGINE
+    # =====================================================
+
+    with tab3:
+
+        st.subheader(" ? Ask Questions About Data ?")
+
+        st.markdown("""
+        ### Example Queries
+        - average salary
+        - max marks by gender
+        - min age by department
+        - average income by city
+        """)
+
+        query = st.text_input(
+            "Enter your query"
+        )
+
+        if query:
+
+            op, target, group = parse_query(
+                query,
+                filtered_df
+            )
+
+            result = execute_query(
+                filtered_df,
+                op,
+                target,
+                group
+            )
+
+            st.write(result)
+
+            insight = generate_query_insight(
+                result,
+                target,
+                group
+            )
+
+            if insight:
+
+                st.info(insight)
+
+    # =====================================================
+    # ML PREDICTION
+    # =====================================================
+
+    with tab4:
+
+        st.subheader("Machine Learning Prediction")
+
+        numeric_targets = filtered_df.select_dtypes(
+            include='number'
+        ).columns.tolist()
+
+        target = st.selectbox(
+            "Select Target Column",
+            numeric_targets
+        )
+
+        if st.button("Train Model"):
+
+            model, score = train_prediction_model(
+                filtered_df,
+                target
+            )
+
+            if model:
+
+                st.success(
+                    f"Model Trained Successfully | R² Score: {score:.2f}"
+                )
+
+                st.subheader("🔮 Predict New Value")
+
+                input_data = {}
+
+                for col in numeric_targets:
+
+                    if col != target:
+
+                        input_data[col] = st.number_input(
+                            f"Enter {col}",
+                            value=0.0
+                        )
+
+                if st.button("Predict"):
+
+                    input_df = pd.DataFrame([input_data])
+
+                    prediction = model.predict(input_df)
+                    
+                    st.write(
+                        f"Predicted {target}: {prediction[0]:.2f}"
+                    )
