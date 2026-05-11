@@ -28,8 +28,12 @@ st.markdown("Upload data, clean it, visualize it, query it, and predict insights
 # =========================================================
 
 file = st.file_uploader(
-    "Upload CSV File",
-    type=["csv"]
+    "Upload Dataset",
+    type=["csv", "xlsx"]
+)
+
+dataset_url = st.text_input(
+    "Or Paste Dataset URL"
 )
 
 # =========================================================
@@ -44,10 +48,36 @@ if file is not None:
 
     # ORIGINAL RAW DATA
 
-    raw_df = pd.read_csv(
-    file,
-    encoding="latin1"
-)
+    raw_df = None
+
+# ================= FILE =================
+
+    if raw_df is not None:
+
+        if file.name.endswith(".csv"):
+
+            raw_df = pd.read_csv(
+                file,
+                encoding="latin1"
+            )
+
+        elif file.name.endswith(".xlsx"):
+
+            raw_df = pd.read_excel(file)
+
+    # ================= URL =================
+
+    elif dataset_url:
+
+        try:
+
+            raw_df = pd.read_csv(dataset_url)
+
+        except:
+
+            tables = pd.read_html(dataset_url)
+
+            raw_df = tables[0]
 
     # COPY FOR CLEANING
 
