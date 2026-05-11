@@ -126,6 +126,12 @@ class DataPreprocessor:
 
                         errors='coerce'
                     )
+                    self.df[f"{col}_Number"] = number_col.fillna(-1)
+                    
+                    # Missing flag
+                    self.df[f"{col}_Missing"] = (
+                        self.df[f"{col}_Number"] == -1
+                    ).astype(int)
 
                     columns_to_drop.append(col)
 
@@ -221,7 +227,16 @@ class DataPreprocessor:
             missing = self.df[col].isnull().sum()
 
             if missing > 0:
+                
+                if col.endswith("_Number"):
 
+                    self.df[col] = self.df[col].fillna(-1)
+
+                    self.report.append(
+                        f"✔ Filled engineered column '{col}' with -1"
+                    )
+
+                    continue
                 # ================= NUMERIC =================
 
                 if pd.api.types.is_numeric_dtype(
