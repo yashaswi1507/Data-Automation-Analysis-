@@ -260,3 +260,141 @@ if raw_df is not None:
             file_name="cleaned_data.csv",
             mime="text/csv"
         )
+
+    # =====================================================
+    # VISUALIZATION STUDIO
+    # =====================================================
+
+    with tab2:
+
+        st.subheader("Visualization Studio")
+
+        all_columns = filtered_df.columns.tolist()
+
+        numeric_cols = filtered_df.select_dtypes(
+            include='number'
+        ).columns.tolist()
+
+        categorical_cols = filtered_df.select_dtypes(
+            exclude='number'
+        ).columns.tolist()
+
+        chart_type = st.selectbox(
+
+            "Choose Chart Type",
+
+            [
+                "Bar Chart",
+                "Line Chart",
+                "Scatter Plot",
+                "Histogram",
+                "Box Plot",
+                "Pie Chart",
+                "Correlation Heatmap"
+            ]
+        )
+
+        # =================================================
+        # BAR CHART
+        # =================================================
+
+        if chart_type == "Bar Chart":
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                x_col = st.selectbox(
+                    "Select X-axis",
+                    categorical_cols
+                )
+
+            with col2:
+                y_col = st.selectbox(
+                    "Select Y-axis",
+                    numeric_cols
+                )
+
+            fig = px.bar(
+                filtered_df,
+                x=x_col,
+                y=y_col,
+                color=x_col,
+                title=f"{y_col} by {x_col}"
+            )
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True
+            )
+
+        # =================================================
+        # LINE CHART
+        # =================================================
+
+        elif chart_type == "Line Chart":
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                x_col = st.selectbox(
+                    "Select X-axis",
+                    all_columns
+                )
+
+            with col2:
+                y_col = st.selectbox(
+                    "Select Y-axis",
+                    numeric_cols
+                )
+
+            fig = px.line(
+                filtered_df,
+                x=x_col,
+                y=y_col,
+                title=f"{y_col} Trend"
+            )
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True
+            )
+
+        # =================================================
+        # SCATTER PLOT
+        # =================================================
+
+        elif chart_type == "Scatter Plot":
+
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                x_col = st.selectbox(
+                    "Select X-axis",
+                    numeric_cols
+                )
+
+            with col2:
+                y_col = st.selectbox(
+                    "Select Y-axis",
+                    numeric_cols,
+                    index=1 if len(numeric_cols) > 1 else 0
+                )
+
+            with col3:
+                color_col = st.selectbox(
+                    "Color By",
+                    categorical_cols
+                )
+
+            fig = px.scatter(
+                filtered_df,
+                x=x_col,
+                y=y_col,
+                color=color_col,
+                title=f"{x_col} vs {y_col}"
+            )
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True
+            )
