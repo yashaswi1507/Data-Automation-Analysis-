@@ -3,7 +3,6 @@ import pandas as pd
 import plotly.express as px
 
 from preprocessing import DataPreprocessor
-from eda import show_summary
 from query_engine import (
     parse_query,
     execute_query,
@@ -45,35 +44,86 @@ dataset_url = st.text_input(
 
 raw_df = None
 
-# ================= FILE =================
+# =========================================================
+# SAFE CSV LOADER
+# =========================================================
+
+def load_csv_safely(file):
+
+    encodings = [
+        "utf-8",
+        "latin1",
+        "ISO-8859-1",
+        "cp1252"
+    ]
+
+    separators = [",", ";", "\t"]
+
+    for enc in encodings:
+
+        for sep in separators:
+
+            try:
+
+                file.seek(0)
+
+                df = pd.read_csv(
+                    file,
+                    encoding=enc,
+                    sep=sep,
+                    on_bad_lines="skip"
+                )
+
+                if len(df.columns) > 1:
+                    return df
+
+            except:
+                continue
+
+    return None
+
+# =========================================================
+# FILE INPUT
+# =========================================================
 
 if file is not None:
 
     if file.name.endswith(".csv"):
 
-        raw_df = pd.read_csv(
-            file,
-            encoding="latin1"
-        )
+        raw_df = load_csv_safely(file)
+
+        if raw_df is None:
+
+            st.error(
+                "Unable to read CSV file"
+            )
 
     elif file.name.endswith(".xlsx"):
 
-        raw_df = pd.read_excel(file)
+        try:
 
-# ================= URL =================
+            raw_df = pd.read_excel(file)
+
+        except:
+
+            st.error(
+                "Unable to read Excel file"
+            )
+
+# =========================================================
+# URL INPUT
+# =========================================================
 
 elif dataset_url:
 
     try:
 
-        # CSV URL
         raw_df = pd.read_csv(dataset_url)
 
     except:
 
         try:
 
-            # WEBSITE TABLE SCRAPING
             tables = pd.read_html(dataset_url)
 
             raw_df = tables[0]
@@ -90,10 +140,6 @@ elif dataset_url:
 
 if raw_df is not None:
 
-    # =====================================================
-    # COPY FOR CLEANING
-    # =====================================================
-
     df = raw_df.copy()
 
     # =====================================================
@@ -101,8 +147,6 @@ if raw_df is not None:
     # =====================================================
 
     st.sidebar.title("Controls")
-
-    # ================= CLEANING OPTIONS =================
 
     st.sidebar.subheader("Data Cleaning")
 
@@ -138,7 +182,7 @@ if raw_df is not None:
     clean_df, report = processor.process()
 
     # =====================================================
-    # SIDEBAR FILTERS
+    # FILTERS
     # =====================================================
 
     st.sidebar.subheader("Filters")
@@ -176,7 +220,7 @@ if raw_df is not None:
     )
 
     # =====================================================
-    # DASHBOARD TAB
+    # DASHBOARD
     # =====================================================
 
     with tab1:
@@ -187,40 +231,36 @@ if raw_df is not None:
             include='number'
         ).columns.tolist()
 
-        # ================= KPI METRICS =================
-
         if len(numeric_cols) > 0:
 
-            col1, col2, col3, col4 = st.columns(4)
+            c1, c2, c3, c4 = st.columns(4)
 
-            col1.metric(
-                "Total Rows",
+            c1.metric(
+                "Rows",
                 len(filtered_df)
             )
 
-            col2.metric(
-                "Total Columns",
+            c2.metric(
+                "Columns",
                 filtered_df.shape[1]
             )
 
-            col3.metric(
+            c3.metric(
                 "Missing Values",
-                int(filtered_df.isnull().sum().sum())
+                int(raw_df.isnull().sum().sum())
             )
 
-            col4.metric(
-                "Avg Value",
+            c4.metric(
+                "Average",
                 round(filtered_df[numeric_cols[0]].mean(), 2)
             )
 
         st.divider()
 
-        # ================= RAW DATA =================
-
-        st.subheader("Raw Data Preview")
+        st.subheader("Raw Data")
 
         rows_to_show = st.slider(
-            "Select number of rows",
+            "Rows",
             5,
             50,
             10
@@ -233,9 +273,7 @@ if raw_df is not None:
 
         st.divider()
 
-        # ================= CLEANING REPORT =================
-
-        st.subheader("Data Cleaning Report")
+        st.subheader("Cleaning Report")
 
         for r in report:
 
@@ -243,26 +281,22 @@ if raw_df is not None:
 
         st.divider()
 
-        # ================= CLEANED DATA =================
-
-        st.subheader("Cleaned Data Preview")
+        st.subheader("Cleaned Data")
 
         st.dataframe(
             clean_df.head(rows_to_show),
             use_container_width=True
         )
 
-        # ================= DOWNLOAD =================
-
         st.download_button(
-            label="⬇ Download Cleaned CSV",
-            data=clean_df.to_csv(index=False).encode('utf-8'),
+            label="Download Cleaned CSV",
+            data=clean_df.to_csv(index=False).encode("utf-8"),
             file_name="cleaned_data.csv",
             mime="text/csv"
         )
 
     # =====================================================
-    # VISUALIZATION STUDIO
+    # VISUALIZATION
     # =====================================================
 
     with tab2:
@@ -280,9 +314,7 @@ if raw_df is not None:
         ).columns.tolist()
 
         chart_type = st.selectbox(
-
             "Choose Chart Type",
-
             [
                 "Bar Chart",
                 "Line Chart",
@@ -295,63 +327,55 @@ if raw_df is not None:
         )
 
         # =================================================
-        # BAR CHART
+        # BAR
         # =================================================
 
         if chart_type == "Bar Chart":
 
-            col1, col2 = st.columns(2)
+            if len(categorical_cols) > 0 and len(numeric_cols) > 0:
 
-            with col1:
                 x_col = st.selectbox(
-                    "Select X-axis",
+                    "X-axis",
                     categorical_cols
                 )
 
-            with col2:
                 y_col = st.selectbox(
-                    "Select Y-axis",
+                    "Y-axis",
                     numeric_cols
                 )
 
-            fig = px.bar(
-                filtered_df,
-                x=x_col,
-                y=y_col,
-                color=x_col,
-                title=f"{y_col} by {x_col}"
-            )
+                fig = px.bar(
+                    filtered_df,
+                    x=x_col,
+                    y=y_col,
+                    color=x_col
+                )
 
-            st.plotly_chart(
-                fig,
-                use_container_width=True
-            )
+                st.plotly_chart(
+                    fig,
+                    use_container_width=True
+                )
 
         # =================================================
-        # LINE CHART
+        # LINE
         # =================================================
 
         elif chart_type == "Line Chart":
 
-            col1, col2 = st.columns(2)
+            x_col = st.selectbox(
+                "X-axis",
+                all_columns
+            )
 
-            with col1:
-                x_col = st.selectbox(
-                    "Select X-axis",
-                    all_columns
-                )
-
-            with col2:
-                y_col = st.selectbox(
-                    "Select Y-axis",
-                    numeric_cols
-                )
+            y_col = st.selectbox(
+                "Y-axis",
+                numeric_cols
+            )
 
             fig = px.line(
                 filtered_df,
                 x=x_col,
-                y=y_col,
-                title=f"{y_col} Trend"
+                y=y_col
             )
 
             st.plotly_chart(
@@ -360,109 +384,25 @@ if raw_df is not None:
             )
 
         # =================================================
-        # SCATTER PLOT
+        # SCATTER
         # =================================================
 
         elif chart_type == "Scatter Plot":
 
-            col1, col2, col3 = st.columns(3)
+            x_col = st.selectbox(
+                "X-axis",
+                numeric_cols
+            )
 
-            with col1:
-                x_col = st.selectbox(
-                    "Select X-axis",
-                    numeric_cols
-                )
-
-            with col2:
-                y_col = st.selectbox(
-                    "Select Y-axis",
-                    numeric_cols,
-                    index=1 if len(numeric_cols) > 1 else 0
-                )
-
-            with col3:
-                color_col = st.selectbox(
-                    "Color By",
-                    categorical_cols
-                )
+            y_col = st.selectbox(
+                "Y-axis",
+                numeric_cols
+            )
 
             fig = px.scatter(
                 filtered_df,
                 x=x_col,
-                y=y_col,
-                color=color_col,
-                title=f"{x_col} vs {y_col}"
-            )
-
-            st.plotly_chart(
-                fig,
-                use_container_width=True
-            )
-# =================================================
-        # LINE CHART
-        # =================================================
-
-        elif chart_type == "Line Chart":
-
-            col1, col2 = st.columns(2)
-
-            with col1:
-                x_col = st.selectbox(
-                    "Select X-axis",
-                    all_columns
-                )
-
-            with col2:
-                y_col = st.selectbox(
-                    "Select Y-axis",
-                    numeric_cols
-                )
-
-            fig = px.line(
-                filtered_df,
-                x=x_col,
-                y=y_col,
-                title=f"{y_col} Trend"
-            )
-
-            st.plotly_chart(
-                fig,
-                use_container_width=True
-            )
-
-        # =================================================
-        # SCATTER PLOT
-        # =================================================
-
-        elif chart_type == "Scatter Plot":
-
-            col1, col2, col3 = st.columns(3)
-
-            with col1:
-                x_col = st.selectbox(
-                    "Select X-axis",
-                    numeric_cols
-                )
-
-            with col2:
-                y_col = st.selectbox(
-                    "Select Y-axis",
-                    numeric_cols,
-                    index=1 if len(numeric_cols) > 1 else 0
-                )
-
-            with col3:
-                color_col = st.selectbox(
-                    "Color By",
-                    categorical_cols
-                )
-
-            fig = px.scatter(
-                filtered_df,
-                x=x_col,
-                y=y_col,
-                color=color_col,
-                title=f"{x_col} vs {y_col}"
+                y=y_col
             )
 
             st.plotly_chart(
@@ -477,14 +417,13 @@ if raw_df is not None:
         elif chart_type == "Histogram":
 
             col = st.selectbox(
-                "Select Column",
+                "Column",
                 numeric_cols
             )
 
             fig = px.histogram(
                 filtered_df,
-                x=col,
-                title=f"Distribution of {col}"
+                x=col
             )
 
             st.plotly_chart(
@@ -499,14 +438,13 @@ if raw_df is not None:
         elif chart_type == "Box Plot":
 
             col = st.selectbox(
-                "Select Column",
+                "Column",
                 numeric_cols
             )
 
             fig = px.box(
                 filtered_df,
-                y=col,
-                title=f"Box Plot of {col}"
+                y=col
             )
 
             st.plotly_chart(
@@ -521,7 +459,7 @@ if raw_df is not None:
         elif chart_type == "Pie Chart":
 
             col = st.selectbox(
-                "Select Category",
+                "Category",
                 categorical_cols
             )
 
@@ -536,8 +474,7 @@ if raw_df is not None:
             fig = px.pie(
                 pie_data,
                 names=col,
-                values="Count",
-                title=f"{col} Distribution"
+                values="Count"
             )
 
             st.plotly_chart(
@@ -546,7 +483,7 @@ if raw_df is not None:
             )
 
         # =================================================
-        # CORRELATION HEATMAP
+        # HEATMAP
         # =================================================
 
         elif chart_type == "Correlation Heatmap":
@@ -555,8 +492,7 @@ if raw_df is not None:
 
             fig = px.imshow(
                 corr,
-                text_auto=True,
-                title="Correlation Heatmap"
+                text_auto=True
             )
 
             st.plotly_chart(
@@ -570,18 +506,10 @@ if raw_df is not None:
 
     with tab3:
 
-        st.subheader(" ? Ask Questions About Data ?")
-
-        st.markdown("""
-        ### Example Queries
-        - average salary
-        - max marks by gender
-        - min age by department
-        - average income by city
-        """)
+        st.subheader("Ask Questions About Data")
 
         query = st.text_input(
-            "Enter your query"
+            "Enter Query"
         )
 
         if query:
@@ -622,43 +550,47 @@ if raw_df is not None:
             include='number'
         ).columns.tolist()
 
-        target = st.selectbox(
-            "Select Target Column",
-            numeric_targets
-        )
+        if len(numeric_targets) > 0:
 
-        if st.button("Train Model"):
-
-            model, score = train_prediction_model(
-                filtered_df,
-                target
+            target = st.selectbox(
+                "Select Target",
+                numeric_targets
             )
 
-            if model:
+            if st.button("Train Model"):
 
-                st.success(
-                    f"Model Trained Successfully | R² Score: {score:.2f}"
+                model, score = train_prediction_model(
+                    filtered_df,
+                    target
                 )
 
-                st.subheader("🔮 Predict New Value")
+                if model:
 
-                input_data = {}
+                    st.success(
+                        f"Model Trained | R² Score: {score:.2f}"
+                    )
 
-                for col in numeric_targets:
+                    input_data = {}
 
-                    if col != target:
+                    for col in numeric_targets:
 
-                        input_data[col] = st.number_input(
-                            f"Enter {col}",
-                            value=0.0
+                        if col != target:
+
+                            input_data[col] = st.number_input(
+                                f"Enter {col}",
+                                value=0.0
+                            )
+
+                    if st.button("Predict"):
+
+                        input_df = pd.DataFrame(
+                            [input_data]
                         )
 
-                if st.button("Predict"):
+                        prediction = model.predict(
+                            input_df
+                        )
 
-                    input_df = pd.DataFrame([input_data])
-
-                    prediction = model.predict(input_df)
-                    
-                    st.write(
-                        f"Predicted {target}: {prediction[0]:.2f}"
-                    )
+                        st.success(
+                            f"Predicted {target}: {prediction[0]:.2f}"
+                        )
