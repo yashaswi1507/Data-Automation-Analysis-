@@ -92,7 +92,7 @@ if file is not None:
 
         raw_df = load_csv_safely(file)
         raw_df.replace(
-            ["?", "NA", "N/A", "null", "NULL", ""],
+            ["?", "NA", "N/A", "null", "NULL", "", "none", "None"],
             pd.NA,
             inplace=True
         )
@@ -108,6 +108,11 @@ if file is not None:
         try:
 
             raw_df = pd.read_excel(file)
+            raw_df.replace(
+                ["?", "NA", "N/A", "null", "NULL", "", "None", "none"],
+                pd.NA,
+                inplace=True
+            )
 
         except:
 
