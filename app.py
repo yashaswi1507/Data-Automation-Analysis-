@@ -210,9 +210,10 @@ if raw_df is not None:
     # TABS
     # =====================================================
 
-    tab1, tab2, tab3, tab4 = st.tabs(
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(
         [
             "Dashboard",
+            "Summary",
             "Visualization Studio",
             "Query Engine",
             "ML Prediction"
@@ -294,29 +295,25 @@ if raw_df is not None:
             file_name="cleaned_data.csv",
             mime="text/csv"
         )
-    st.dataframe(
-    clean_df.head(rows_to_show),
-    use_container_width=True
-    )
 
     # =====================================================
     # DATA SUMMARY
     # =====================================================
+    with tab2: 
+        st.divider()
 
-    st.divider()
+        st.subheader("Statistical Summary")
 
-    st.subheader("Statistical Summary")
-
-    st.dataframe(
-        filtered_df.describe(include="all"),
-        use_container_width=True
-    )
+        st.dataframe(
+            filtered_df.describe(include="all"),
+            use_container_width=True
+        )
 
     # =====================================================
     # VISUALIZATION
     # =====================================================
 
-    with tab2:
+    with tab3:
 
         st.subheader("Visualization Studio")
 
@@ -521,7 +518,7 @@ if raw_df is not None:
     # QUERY ENGINE
     # =====================================================
 
-    with tab3:
+    with tab4:
 
         st.subheader("Ask Questions About Data")
 
@@ -559,7 +556,7 @@ if raw_df is not None:
     # ML PREDICTION
     # =====================================================
 
-    with tab4:
+    with tab5:
 
         st.subheader("Machine Learning Prediction")
 
