@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-
+from eda import show_summary
 from preprocessing import DataPreprocessor
 from query_engine import (
     parse_query,
@@ -294,6 +294,23 @@ if raw_df is not None:
             file_name="cleaned_data.csv",
             mime="text/csv"
         )
+    st.dataframe(
+    clean_df.head(rows_to_show),
+    use_container_width=True
+    )
+
+    # =====================================================
+    # DATA SUMMARY
+    # =====================================================
+
+    st.divider()
+
+    st.subheader("Statistical Summary")
+
+    st.dataframe(
+        filtered_df.describe(include="all"),
+        use_container_width=True
+    )
 
     # =====================================================
     # VISUALIZATION
