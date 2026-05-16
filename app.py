@@ -91,6 +91,11 @@ if file is not None:
     if file.name.endswith(".csv"):
 
         raw_df = load_csv_safely(file)
+        raw_df.replace(
+            ["?", "NA", "N/A", "null", "NULL", ""],
+            pd.NA,
+            inplace=True
+        )
 
         if raw_df is None:
 
@@ -110,29 +115,29 @@ if file is not None:
                 "Unable to read Excel file"
             )
 
-# =========================================================
-# URL INPUT
-# =========================================================
+    # =========================================================
+    # URL INPUT
+    # =========================================================
 
-elif dataset_url:
-
-    try:
-
-        raw_df = pd.read_csv(dataset_url)
-
-    except:
+    elif dataset_url:
 
         try:
 
-            tables = pd.read_html(dataset_url)
-
-            raw_df = tables[0]
+            raw_df = pd.read_csv(dataset_url)
 
         except:
 
-            st.error(
-                "Could not load dataset from URL"
-            )
+            try:
+
+                tables = pd.read_html(dataset_url)
+
+                raw_df = tables[0]
+
+            except:
+
+                st.error(
+                    "Could not load dataset from URL"
+                )
 
 # =========================================================
 # MAIN APP
