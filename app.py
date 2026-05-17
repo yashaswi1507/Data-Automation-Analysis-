@@ -526,7 +526,33 @@ if raw_df is not None:
 
         if len(numeric_cols) > 0:
 
-            c1, c2, c3, c4 = st.columns(4)
+            c1, c2, c3, c4, c5 = st.columns(4)
+
+            # =========================================
+            # RAW MISSING VALUES
+            # =========================================
+
+            raw_missing = (
+                raw_df
+                .isnull()
+                .sum()
+                .sum()
+            )
+
+            # =========================================
+            # CLEANED MISSING VALUES
+            # =========================================
+
+            clean_missing = (
+                clean_df
+                .isnull()
+                .sum()
+                .sum()
+            )
+
+            # =========================================
+            # METRICS
+            # =========================================
 
             c1.metric(
                 "Rows",
@@ -539,12 +565,13 @@ if raw_df is not None:
             )
 
             c3.metric(
-                "Missing Values",
-                int(
-                    raw_df.isnull()
-                    .sum()
-                    .sum()
-                )
+                "Raw Missing",
+                f"{raw_missing:,}"
+            )
+
+            c4.metric(
+                "Cleaned Missing",
+                f"{clean_missing:,}"
             )
 
             # =========================================
@@ -566,14 +593,14 @@ if raw_df is not None:
                     avg_col
                 ].mean()
 
-                c4.metric(
+                c5.metric(
                     f"Avg {avg_col}",
                     f"{avg_value:,.2f}"
                 )
 
             else:
 
-                c4.metric(
+                c5.metric(
                     "Numeric Columns",
                     len(numeric_cols)
                 )
