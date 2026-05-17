@@ -9,6 +9,8 @@ from query_engine import (
     generate_query_insight
 )
 from ml_engine import train_prediction_model
+import requests
+from bs4 import BeautifulSoup
 
 # =========================================================
 # PAGE CONFIG
@@ -83,6 +85,81 @@ def load_csv_safely(file):
     return None
 
 # =========================================================
+# URL DATA LOADER
+# =========================================================
+
+def load_data_from_url(url):
+
+    # ================= CSV =================
+
+    try:
+
+        if ".csv" in url:
+
+            return pd.read_csv(url)
+
+    except:
+        pass
+
+    # ================= EXCEL =================
+
+    try:
+
+        if ".xlsx" in url:
+
+            return pd.read_excel(url)
+
+    except:
+        pass
+
+    # ================= HTML TABLE =================
+
+    try:
+
+        tables = pd.read_html(url)
+
+        if len(tables) > 0:
+
+            return tables[0]
+
+    except:
+        pass
+
+    # ================= GENERIC WEB SCRAPING =================
+
+    try:
+
+        response = requests.get(url)
+
+        soup = BeautifulSoup(
+            response.text,
+            "html.parser"
+        )
+
+        paragraphs = soup.find_all("p")
+
+        scraped_data = []
+
+        for p in paragraphs[:50]:
+
+            text = p.get_text().strip()
+
+            if text:
+
+                scraped_data.append(
+                    {"Text": text}
+                )
+
+        if len(scraped_data) > 0:
+
+            return pd.DataFrame(scraped_data)
+
+    except:
+        pass
+
+    return None
+
+# =========================================================
 # FILE INPUT
 # =========================================================
 
@@ -91,13 +168,16 @@ if file is not None:
     if file.name.endswith(".csv"):
 
         raw_df = load_csv_safely(file)
-        raw_df.replace(
-            ["?", "NA", "N/A", "null", "NULL", "", "none", "None"],
-            pd.NA,
-            inplace=True
-        )
 
-        if raw_df is None:
+        if raw_df is not None:
+
+            raw_df.replace(
+                ["?", "NA", "N/A", "null", "NULL", "", "none", "None"],
+                pd.NA,
+                inplace=True
+            )
+
+        else:
 
             st.error(
                 "Unable to read CSV file"
@@ -108,6 +188,7 @@ if file is not None:
         try:
 
             raw_df = pd.read_excel(file)
+
             raw_df.replace(
                 ["?", "NA", "N/A", "null", "NULL", "", "None", "none"],
                 pd.NA,
@@ -120,29 +201,29 @@ if file is not None:
                 "Unable to read Excel file"
             )
 
-    # =========================================================
-    # URL INPUT
-    # =========================================================
+# =========================================================
+# URL INPUT
+# =========================================================
 
-    elif dataset_url:
+if raw_df is None and dataset_url:
 
-        try:
+    raw_df = load_data_from_url(
+        dataset_url
+    )
 
-            raw_df = pd.read_csv(dataset_url)
+    if raw_df is not None:
 
-        except:
+        raw_df.replace(
+            ["?", "NA", "N/A", "null", "NULL", "", "none", "None"],
+            pd.NA,
+            inplace=True
+        )
 
-            try:
+    else:
 
-                tables = pd.read_html(dataset_url)
-
-                raw_df = tables[0]
-
-            except:
-
-                st.error(
-                    "Could not load dataset from URL"
-                )
+        st.error(
+            "Could not extract data from URL"
+        )
 
 # =========================================================
 # MAIN APP
@@ -309,7 +390,9 @@ if raw_df is not None:
     # =====================================================
     # DATA SUMMARY
     # =====================================================
-    with tab2: 
+
+    with tab2:
+
         st.divider()
 
         st.subheader("Statistical Summary")
