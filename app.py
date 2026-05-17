@@ -528,10 +528,6 @@ if raw_df is not None:
 
             c1, c2, c3, c4, c5 = st.columns(5)
 
-            # =========================================
-            # RAW MISSING VALUES
-            # =========================================
-
             raw_missing = (
                 raw_df
                 .isnull()
@@ -539,20 +535,12 @@ if raw_df is not None:
                 .sum()
             )
 
-            # =========================================
-            # CLEANED MISSING VALUES
-            # =========================================
-
             clean_missing = (
                 clean_df
                 .isnull()
                 .sum()
                 .sum()
             )
-
-            # =========================================
-            # METRICS
-            # =========================================
 
             c1.metric(
                 "Rows",
@@ -573,10 +561,6 @@ if raw_df is not None:
                 "Cleaned Missing",
                 f"{clean_missing:,}"
             )
-
-            # =========================================
-            # REMOVE ID COLUMNS
-            # =========================================
 
             useful_numeric_cols = [
 
@@ -714,7 +698,36 @@ if raw_df is not None:
         )
 
         # =================================================
-        # BAR
+        # GROUP BY OPTION
+        # =================================================
+
+        use_groupby = st.checkbox(
+            "Use Group By"
+        )
+
+        group_col = None
+        agg_func = None
+
+        if use_groupby:
+
+            group_col = st.selectbox(
+                "Group By Column",
+                categorical_cols
+            )
+
+            agg_func = st.selectbox(
+                "Aggregation Function",
+                [
+                    "sum",
+                    "mean",
+                    "max",
+                    "min",
+                    "count"
+                ]
+            )
+
+        # =================================================
+        # BAR CHART
         # =================================================
 
         if chart_type == "Bar Chart":
@@ -727,20 +740,42 @@ if raw_df is not None:
 
                 x_col = st.selectbox(
                     "X-axis",
-                    categorical_cols
+                    categorical_cols,
+                    key="bar_x"
                 )
 
                 y_col = st.selectbox(
                     "Y-axis",
-                    numeric_cols
+                    numeric_cols,
+                    key="bar_y"
                 )
 
-                fig = px.bar(
-                    filtered_df,
-                    x=x_col,
-                    y=y_col,
-                    color=x_col
-                )
+                chart_df = filtered_df.copy()
+
+                if use_groupby:
+
+                    chart_df = (
+                        chart_df
+                        .groupby(group_col)[y_col]
+                        .agg(agg_func)
+                        .reset_index()
+                    )
+
+                    fig = px.bar(
+                        chart_df,
+                        x=group_col,
+                        y=y_col,
+                        color=group_col
+                    )
+
+                else:
+
+                    fig = px.bar(
+                        chart_df,
+                        x=x_col,
+                        y=y_col,
+                        color=x_col
+                    )
 
                 st.plotly_chart(
                     fig,
@@ -748,26 +783,47 @@ if raw_df is not None:
                 )
 
         # =================================================
-        # LINE
+        # LINE CHART
         # =================================================
 
         elif chart_type == "Line Chart":
 
             x_col = st.selectbox(
                 "X-axis",
-                all_columns
+                all_columns,
+                key="line_x"
             )
 
             y_col = st.selectbox(
                 "Y-axis",
-                numeric_cols
+                numeric_cols,
+                key="line_y"
             )
 
-            fig = px.line(
-                filtered_df,
-                x=x_col,
-                y=y_col
-            )
+            chart_df = filtered_df.copy()
+
+            if use_groupby:
+
+                chart_df = (
+                    chart_df
+                    .groupby(group_col)[y_col]
+                    .agg(agg_func)
+                    .reset_index()
+                )
+
+                fig = px.line(
+                    chart_df,
+                    x=group_col,
+                    y=y_col
+                )
+
+            else:
+
+                fig = px.line(
+                    chart_df,
+                    x=x_col,
+                    y=y_col
+                )
 
             st.plotly_chart(
                 fig,
@@ -775,26 +831,48 @@ if raw_df is not None:
             )
 
         # =================================================
-        # SCATTER
+        # SCATTER PLOT
         # =================================================
 
         elif chart_type == "Scatter Plot":
 
             x_col = st.selectbox(
                 "X-axis",
-                numeric_cols
+                numeric_cols,
+                key="scatter_x"
             )
 
             y_col = st.selectbox(
                 "Y-axis",
-                numeric_cols
+                numeric_cols,
+                key="scatter_y"
             )
 
-            fig = px.scatter(
-                filtered_df,
-                x=x_col,
-                y=y_col
-            )
+            chart_df = filtered_df.copy()
+
+            if use_groupby:
+
+                chart_df = (
+                    chart_df
+                    .groupby(group_col)[[x_col, y_col]]
+                    .mean()
+                    .reset_index()
+                )
+
+                fig = px.scatter(
+                    chart_df,
+                    x=x_col,
+                    y=y_col,
+                    color=group_col
+                )
+
+            else:
+
+                fig = px.scatter(
+                    chart_df,
+                    x=x_col,
+                    y=y_col
+                )
 
             st.plotly_chart(
                 fig,
@@ -809,12 +887,16 @@ if raw_df is not None:
 
             col = st.selectbox(
                 "Column",
-                numeric_cols
+                numeric_cols,
+                key="hist_col"
             )
 
+            chart_df = filtered_df.copy()
+
             fig = px.histogram(
-                filtered_df,
-                x=col
+                chart_df,
+                x=col,
+                color=group_col if use_groupby else None
             )
 
             st.plotly_chart(
@@ -830,12 +912,16 @@ if raw_df is not None:
 
             col = st.selectbox(
                 "Column",
-                numeric_cols
+                numeric_cols,
+                key="box_col"
             )
 
+            chart_df = filtered_df.copy()
+
             fig = px.box(
-                filtered_df,
-                y=col
+                chart_df,
+                y=col,
+                color=group_col if use_groupby else None
             )
 
             st.plotly_chart(
@@ -853,25 +939,49 @@ if raw_df is not None:
 
                 col = st.selectbox(
                     "Category",
-                    categorical_cols
+                    categorical_cols,
+                    key="pie_col"
                 )
 
-                pie_data = (
-                    filtered_df[col]
-                    .value_counts()
-                    .reset_index()
-                )
+                chart_df = filtered_df.copy()
 
-                pie_data.columns = [
-                    col,
-                    "Count"
-                ]
+                if use_groupby:
 
-                fig = px.pie(
-                    pie_data,
-                    names=col,
-                    values="Count"
-                )
+                    pie_data = (
+                        chart_df[group_col]
+                        .value_counts()
+                        .reset_index()
+                    )
+
+                    pie_data.columns = [
+                        group_col,
+                        "Count"
+                    ]
+
+                    fig = px.pie(
+                        pie_data,
+                        names=group_col,
+                        values="Count"
+                    )
+
+                else:
+
+                    pie_data = (
+                        chart_df[col]
+                        .value_counts()
+                        .reset_index()
+                    )
+
+                    pie_data.columns = [
+                        col,
+                        "Count"
+                    ]
+
+                    fig = px.pie(
+                        pie_data,
+                        names=col,
+                        values="Count"
+                    )
 
                 st.plotly_chart(
                     fig,
