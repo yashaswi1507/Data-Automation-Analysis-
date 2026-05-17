@@ -3,3 +3,6 @@ numpy
 streamlit
 plotly
 scikit-learn
+requests
+beautifulsoup4
+lxml
