@@ -1,16 +1,26 @@
+
+# =========================================================
+# IMPORTS
+# =========================================================
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import requests
+
+from bs4 import BeautifulSoup
+
 from eda import show_summary
+
 from preprocessing import DataPreprocessor
+
 from query_engine import (
     parse_query,
     execute_query,
     generate_query_insight
 )
+
 from ml_engine import train_prediction_model
-import requests
-from bs4 import BeautifulSoup
 
 # =========================================================
 # PAGE CONFIG
@@ -77,6 +87,7 @@ def load_csv_safely(file):
                 )
 
                 if len(df.columns) > 1:
+
                     return df
 
             except:
@@ -90,7 +101,9 @@ def load_csv_safely(file):
 
 def load_data_from_url(url):
 
-    # ================= CSV =================
+    # =====================================================
+    # DIRECT CSV
+    # =====================================================
 
     try:
 
@@ -101,7 +114,9 @@ def load_data_from_url(url):
     except:
         pass
 
-    # ================= EXCEL =================
+    # =====================================================
+    # DIRECT EXCEL
+    # =====================================================
 
     try:
 
@@ -112,7 +127,9 @@ def load_data_from_url(url):
     except:
         pass
 
-    # ================= HTML TABLE =================
+    # =====================================================
+    # HTML TABLES
+    # =====================================================
 
     try:
 
@@ -125,16 +142,63 @@ def load_data_from_url(url):
     except:
         pass
 
-    # ================= GENERIC WEB SCRAPING =================
+    # =====================================================
+    # GENERIC WEBSITE SCRAPING
+    # =====================================================
 
     try:
 
-        response = requests.get(url)
+        headers = {
+            "User-Agent":
+            "Mozilla/5.0"
+        }
+
+        response = requests.get(
+            url,
+            headers=headers,
+            timeout=15
+        )
 
         soup = BeautifulSoup(
             response.text,
             "html.parser"
         )
+
+        # =================================================
+        # TRY CSV LINKS
+        # =================================================
+
+        csv_links = []
+
+        for link in soup.find_all("a"):
+
+            href = link.get("href")
+
+            if href and ".csv" in href:
+
+                if href.startswith("/"):
+
+                    href = (
+                        "https://www.kaggle.com"
+                        + href
+                    )
+
+                csv_links.append(href)
+
+        if len(csv_links) > 0:
+
+            try:
+
+                return pd.read_csv(
+                    csv_links[0]
+                )
+
+            except:
+                pass
+
+        # =================================================
+        # SCRAPE TEXT CONTENT
+        # =================================================
 
         paragraphs = soup.find_all("p")
 
@@ -152,7 +216,9 @@ def load_data_from_url(url):
 
         if len(scraped_data) > 0:
 
-            return pd.DataFrame(scraped_data)
+            return pd.DataFrame(
+                scraped_data
+            )
 
     except:
         pass
@@ -165,6 +231,10 @@ def load_data_from_url(url):
 
 if file is not None:
 
+    # =====================================================
+    # CSV
+    # =====================================================
+
     if file.name.endswith(".csv"):
 
         raw_df = load_csv_safely(file)
@@ -172,7 +242,16 @@ if file is not None:
         if raw_df is not None:
 
             raw_df.replace(
-                ["?", "NA", "N/A", "null", "NULL", "", "none", "None"],
+                [
+                    "?",
+                    "NA",
+                    "N/A",
+                    "null",
+                    "NULL",
+                    "",
+                    "none",
+                    "None"
+                ],
                 pd.NA,
                 inplace=True
             )
@@ -183,6 +262,10 @@ if file is not None:
                 "Unable to read CSV file"
             )
 
+    # =====================================================
+    # EXCEL
+    # =====================================================
+
     elif file.name.endswith(".xlsx"):
 
         try:
@@ -190,7 +273,16 @@ if file is not None:
             raw_df = pd.read_excel(file)
 
             raw_df.replace(
-                ["?", "NA", "N/A", "null", "NULL", "", "None", "none"],
+                [
+                    "?",
+                    "NA",
+                    "N/A",
+                    "null",
+                    "NULL",
+                    "",
+                    "none",
+                    "None"
+                ],
                 pd.NA,
                 inplace=True
             )
@@ -214,7 +306,16 @@ if raw_df is None and dataset_url:
     if raw_df is not None:
 
         raw_df.replace(
-            ["?", "NA", "N/A", "null", "NULL", "", "none", "None"],
+            [
+                "?",
+                "NA",
+                "N/A",
+                "null",
+                "NULL",
+                "",
+                "none",
+                "None"
+            ],
             pd.NA,
             inplace=True
         )
@@ -280,9 +381,16 @@ if raw_df is not None:
 
     filtered_df = clean_df.copy()
 
-    for col in clean_df.select_dtypes(include='object').columns:
+    for col in clean_df.select_dtypes(
+        include='object'
+    ).columns:
 
-        unique_vals = clean_df[col].dropna().unique().tolist()
+        unique_vals = (
+            clean_df[col]
+            .dropna()
+            .unique()
+            .tolist()
+        )
 
         if len(unique_vals) <= 50:
 
@@ -294,7 +402,8 @@ if raw_df is not None:
             if selected != "All":
 
                 filtered_df = filtered_df[
-                    filtered_df[col] == selected
+                    filtered_df[col]
+                    == selected
                 ]
 
     # =====================================================
@@ -317,11 +426,18 @@ if raw_df is not None:
 
     with tab1:
 
-        st.subheader("Dashboard Overview")
+        st.subheader(
+            "Dashboard Overview"
+        )
 
-        numeric_cols = filtered_df.select_dtypes(
-            include='number'
-        ).columns.tolist()
+        numeric_cols = (
+            filtered_df
+            .select_dtypes(
+                include='number'
+            )
+            .columns
+            .tolist()
+        )
 
         if len(numeric_cols) > 0:
 
@@ -339,12 +455,21 @@ if raw_df is not None:
 
             c3.metric(
                 "Missing Values",
-                int(raw_df.isnull().sum().sum())
+                int(
+                    raw_df.isnull()
+                    .sum()
+                    .sum()
+                )
             )
 
             c4.metric(
                 "Average",
-                round(filtered_df[numeric_cols[0]].mean(), 2)
+                round(
+                    filtered_df[
+                        numeric_cols[0]
+                    ].mean(),
+                    2
+                )
             )
 
         st.divider()
@@ -365,7 +490,9 @@ if raw_df is not None:
 
         st.divider()
 
-        st.subheader("Cleaning Report")
+        st.subheader(
+            "Cleaning Report"
+        )
 
         for r in report:
 
@@ -373,7 +500,9 @@ if raw_df is not None:
 
         st.divider()
 
-        st.subheader("Cleaned Data")
+        st.subheader(
+            "Cleaned Data"
+        )
 
         st.dataframe(
             clean_df.head(rows_to_show),
@@ -382,23 +511,27 @@ if raw_df is not None:
 
         st.download_button(
             label="Download Cleaned CSV",
-            data=clean_df.to_csv(index=False).encode("utf-8"),
+            data=clean_df.to_csv(
+                index=False
+            ).encode("utf-8"),
             file_name="cleaned_data.csv",
             mime="text/csv"
         )
 
     # =====================================================
-    # DATA SUMMARY
+    # SUMMARY
     # =====================================================
 
     with tab2:
 
-        st.divider()
-
-        st.subheader("Statistical Summary")
+        st.subheader(
+            "Statistical Summary"
+        )
 
         st.dataframe(
-            filtered_df.describe(include="all"),
+            filtered_df.describe(
+                include="all"
+            ),
             use_container_width=True
         )
 
@@ -408,17 +541,31 @@ if raw_df is not None:
 
     with tab3:
 
-        st.subheader("Visualization Studio")
+        st.subheader(
+            "Visualization Studio"
+        )
 
-        all_columns = filtered_df.columns.tolist()
+        all_columns = (
+            filtered_df.columns.tolist()
+        )
 
-        numeric_cols = filtered_df.select_dtypes(
-            include='number'
-        ).columns.tolist()
+        numeric_cols = (
+            filtered_df
+            .select_dtypes(
+                include='number'
+            )
+            .columns
+            .tolist()
+        )
 
-        categorical_cols = filtered_df.select_dtypes(
-            exclude='number'
-        ).columns.tolist()
+        categorical_cols = (
+            filtered_df
+            .select_dtypes(
+                exclude='number'
+            )
+            .columns
+            .tolist()
+        )
 
         chart_type = st.selectbox(
             "Choose Chart Type",
@@ -439,7 +586,11 @@ if raw_df is not None:
 
         if chart_type == "Bar Chart":
 
-            if len(categorical_cols) > 0 and len(numeric_cols) > 0:
+            if (
+                len(categorical_cols) > 0
+                and
+                len(numeric_cols) > 0
+            ):
 
                 x_col = st.selectbox(
                     "X-axis",
@@ -576,7 +727,10 @@ if raw_df is not None:
                 .reset_index()
             )
 
-            pie_data.columns = [col, "Count"]
+            pie_data.columns = [
+                col,
+                "Count"
+            ]
 
             fig = px.pie(
                 pie_data,
@@ -593,9 +747,17 @@ if raw_df is not None:
         # HEATMAP
         # =================================================
 
-        elif chart_type == "Correlation Heatmap":
+        elif (
+            chart_type
+            ==
+            "Correlation Heatmap"
+        ):
 
-            corr = filtered_df[numeric_cols].corr()
+            corr = (
+                filtered_df[
+                    numeric_cols
+                ].corr()
+            )
 
             fig = px.imshow(
                 corr,
@@ -613,7 +775,9 @@ if raw_df is not None:
 
     with tab4:
 
-        st.subheader("Ask Questions About Data")
+        st.subheader(
+            "Ask Questions About Data"
+        )
 
         query = st.text_input(
             "Enter Query"
@@ -621,9 +785,11 @@ if raw_df is not None:
 
         if query:
 
-            op, target, group = parse_query(
-                query,
-                filtered_df
+            op, target, group = (
+                parse_query(
+                    query,
+                    filtered_df
+                )
             )
 
             result = execute_query(
@@ -635,10 +801,12 @@ if raw_df is not None:
 
             st.write(result)
 
-            insight = generate_query_insight(
-                result,
-                target,
-                group
+            insight = (
+                generate_query_insight(
+                    result,
+                    target,
+                    group
+                )
             )
 
             if insight:
@@ -651,11 +819,18 @@ if raw_df is not None:
 
     with tab5:
 
-        st.subheader("Machine Learning Prediction")
+        st.subheader(
+            "Machine Learning Prediction"
+        )
 
-        numeric_targets = filtered_df.select_dtypes(
-            include='number'
-        ).columns.tolist()
+        numeric_targets = (
+            filtered_df
+            .select_dtypes(
+                include='number'
+            )
+            .columns
+            .tolist()
+        )
 
         if len(numeric_targets) > 0:
 
@@ -664,11 +839,15 @@ if raw_df is not None:
                 numeric_targets
             )
 
-            if st.button("Train Model"):
+            if st.button(
+                "Train Model"
+            ):
 
-                model, score = train_prediction_model(
-                    filtered_df,
-                    target
+                model, score = (
+                    train_prediction_model(
+                        filtered_df,
+                        target
+                    )
                 )
 
                 if model:
@@ -683,21 +862,28 @@ if raw_df is not None:
 
                         if col != target:
 
-                            input_data[col] = st.number_input(
-                                f"Enter {col}",
-                                value=0.0
+                            input_data[col] = (
+                                st.number_input(
+                                    f"Enter {col}",
+                                    value=0.0
+                                )
                             )
 
-                    if st.button("Predict"):
+                    if st.button(
+                        "Predict"
+                    ):
 
                         input_df = pd.DataFrame(
                             [input_data]
                         )
 
-                        prediction = model.predict(
-                            input_df
+                        prediction = (
+                            model.predict(
+                                input_df
+                            )
                         )
 
                         st.success(
                             f"Predicted {target}: {prediction[0]:.2f}"
                         )
+
