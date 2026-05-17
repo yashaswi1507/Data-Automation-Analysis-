@@ -547,14 +547,36 @@ if raw_df is not None:
                 )
             )
 
-            avg_col = numeric_cols[0]
+            # =========================================
+            # REMOVE ID COLUMNS
+            # =========================================
 
-            avg_value = filtered_df[avg_col].mean()
+            useful_numeric_cols = [
 
-            c4.metric(
+                col for col in numeric_cols
+
+                if "id" not in col.lower()
+            ]
+
+            if len(useful_numeric_cols) > 0:
+
+                avg_col = useful_numeric_cols[0]
+
+                avg_value = filtered_df[
+                    avg_col
+                ].mean()
+
+                c4.metric(
                     f"Avg {avg_col}",
                     f"{avg_value:,.2f}"
-            )
+                )
+
+            else:
+
+                c4.metric(
+                    "Average",
+                    "N/A"
+                )
 
         st.divider()
 
