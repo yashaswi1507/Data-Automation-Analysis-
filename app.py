@@ -1,12 +1,17 @@
-
 # =========================================================
 # IMPORTS
 # =========================================================
 
+import os
+import io
+import glob
+import zipfile
+import requests
+import kagglehub
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import requests
 
 from bs4 import BeautifulSoup
 
@@ -43,11 +48,16 @@ st.markdown(
 
 file = st.file_uploader(
     "Upload Dataset",
-    type=["csv", "xlsx"]
+    type=[
+        "csv",
+        "xlsx",
+        "json",
+        "zip"
+    ]
 )
 
 dataset_url = st.text_input(
-    "Or Paste Dataset URL"
+    "Or Paste Dataset URL / API / Kaggle Dataset"
 )
 
 # =========================================================
@@ -69,7 +79,11 @@ def load_csv_safely(file):
         "cp1252"
     ]
 
-    separators = [",", ";", "\t"]
+    separators = [
+        ",",
+        ";",
+        "\t"
+    ]
 
     for enc in encodings:
 
@@ -96,33 +110,87 @@ def load_csv_safely(file):
     return None
 
 # =========================================================
-# URL DATA LOADER
+# UNIVERSAL DATA LOADER
 # =========================================================
 
-def load_data_from_url(url):
+def universal_data_loader(source):
 
     # =====================================================
-    # DIRECT CSV
+    # KAGGLE DATASET
     # =====================================================
 
     try:
 
-        if ".csv" in url:
+        if "kaggle.com/datasets/" in source:
 
-            return pd.read_csv(url)
+            parts = source.split("/datasets/")[1]
+
+            dataset_path = parts.split("?")[0]
+
+            path = kagglehub.dataset_download(
+                dataset_path
+            )
+
+            csv_files = glob.glob(
+                os.path.join(path, "*.csv")
+            )
+
+            if len(csv_files) > 0:
+
+                return pd.read_csv(
+                    csv_files[0]
+                )
+
+            xlsx_files = glob.glob(
+                os.path.join(path, "*.xlsx")
+            )
+
+            if len(xlsx_files) > 0:
+
+                return pd.read_excel(
+                    xlsx_files[0]
+                )
 
     except:
         pass
 
     # =====================================================
-    # DIRECT EXCEL
+    # CSV URL
     # =====================================================
 
     try:
 
-        if ".xlsx" in url:
+        if ".csv" in source:
 
-            return pd.read_excel(url)
+            return pd.read_csv(source)
+
+    except:
+        pass
+
+    # =====================================================
+    # EXCEL URL
+    # =====================================================
+
+    try:
+
+        if ".xlsx" in source:
+
+            return pd.read_excel(source)
+
+    except:
+        pass
+
+    # =====================================================
+    # JSON API
+    # =====================================================
+
+    try:
+
+        response = requests.get(source)
+
+        data = response.json()
+
+        return pd.DataFrame(data)
 
     except:
         pass
@@ -133,7 +201,7 @@ def load_data_from_url(url):
 
     try:
 
-        tables = pd.read_html(url)
+        tables = pd.read_html(source)
 
         if len(tables) > 0:
 
@@ -143,7 +211,32 @@ def load_data_from_url(url):
         pass
 
     # =====================================================
-    # GENERIC WEBSITE SCRAPING
+    # ZIP URL
+    # =====================================================
+
+    try:
+
+        if ".zip" in source:
+
+            response = requests.get(source)
+
+            zip_file = zipfile.ZipFile(
+                io.BytesIO(response.content)
+            )
+
+            for file_name in zip_file.namelist():
+
+                if file_name.endswith(".csv"):
+
+                    with zip_file.open(file_name) as f:
+
+                        return pd.read_csv(f)
+
+    except:
+        pass
+
+    # =====================================================
+    # WEB SCRAPING
     # =====================================================
 
     try:
@@ -154,7 +247,7 @@ def load_data_from_url(url):
         }
 
         response = requests.get(
-            url,
+            source,
             headers=headers,
             timeout=15
         )
@@ -164,47 +257,11 @@ def load_data_from_url(url):
             "html.parser"
         )
 
-        # =================================================
-        # TRY CSV LINKS
-        # =================================================
-
-        csv_links = []
-
-        for link in soup.find_all("a"):
-
-            href = link.get("href")
-
-            if href and ".csv" in href:
-
-                if href.startswith("/"):
-
-                    href = (
-                        "https://www.kaggle.com"
-                        + href
-                    )
-
-                csv_links.append(href)
-
-        if len(csv_links) > 0:
-
-            try:
-
-                return pd.read_csv(
-                    csv_links[0]
-                )
-
-            except:
-                pass
-
-        # =================================================
-        # SCRAPE TEXT CONTENT
-        # =================================================
-
         paragraphs = soup.find_all("p")
 
         scraped_data = []
 
-        for p in paragraphs[:50]:
+        for p in paragraphs[:100]:
 
             text = p.get_text().strip()
 
@@ -226,6 +283,31 @@ def load_data_from_url(url):
     return None
 
 # =========================================================
+# CLEAN MISSING VALUES
+# =========================================================
+
+def clean_missing_values(df):
+
+    df.replace(
+        [
+            "?",
+            "NA",
+            "N/A",
+            "null",
+            "NULL",
+            "",
+            "none",
+            "None",
+            "NaN",
+            "nan"
+        ],
+        pd.NA,
+        inplace=True
+    )
+
+    return df
+
+# =========================================================
 # FILE INPUT
 # =========================================================
 
@@ -239,29 +321,6 @@ if file is not None:
 
         raw_df = load_csv_safely(file)
 
-        if raw_df is not None:
-
-            raw_df.replace(
-                [
-                    "?",
-                    "NA",
-                    "N/A",
-                    "null",
-                    "NULL",
-                    "",
-                    "none",
-                    "None"
-                ],
-                pd.NA,
-                inplace=True
-            )
-
-        else:
-
-            st.error(
-                "Unable to read CSV file"
-            )
-
     # =====================================================
     # EXCEL
     # =====================================================
@@ -272,26 +331,61 @@ if file is not None:
 
             raw_df = pd.read_excel(file)
 
-            raw_df.replace(
-                [
-                    "?",
-                    "NA",
-                    "N/A",
-                    "null",
-                    "NULL",
-                    "",
-                    "none",
-                    "None"
-                ],
-                pd.NA,
-                inplace=True
-            )
-
         except:
 
             st.error(
                 "Unable to read Excel file"
             )
+
+    # =====================================================
+    # JSON
+    # =====================================================
+
+    elif file.name.endswith(".json"):
+
+        try:
+
+            raw_df = pd.read_json(file)
+
+        except:
+
+            st.error(
+                "Unable to read JSON file"
+            )
+
+    # =====================================================
+    # ZIP
+    # =====================================================
+
+    elif file.name.endswith(".zip"):
+
+        try:
+
+            zip_file = zipfile.ZipFile(file)
+
+            for file_name in zip_file.namelist():
+
+                if file_name.endswith(".csv"):
+
+                    with zip_file.open(file_name) as f:
+
+                        raw_df = pd.read_csv(f)
+
+        except:
+
+            st.error(
+                "Unable to read ZIP file"
+            )
+
+    # =====================================================
+    # CLEAN MISSING VALUES
+    # =====================================================
+
+    if raw_df is not None:
+
+        raw_df = clean_missing_values(
+            raw_df
+        )
 
 # =========================================================
 # URL INPUT
@@ -299,31 +393,20 @@ if file is not None:
 
 if raw_df is None and dataset_url:
 
-    raw_df = load_data_from_url(
+    raw_df = universal_data_loader(
         dataset_url
     )
 
     if raw_df is not None:
 
-        raw_df.replace(
-            [
-                "?",
-                "NA",
-                "N/A",
-                "null",
-                "NULL",
-                "",
-                "none",
-                "None"
-            ],
-            pd.NA,
-            inplace=True
+        raw_df = clean_missing_values(
+            raw_df
         )
 
     else:
 
         st.error(
-            "Could not extract data from URL"
+            "Could not load data from source"
         )
 
 # =========================================================
@@ -340,7 +423,9 @@ if raw_df is not None:
 
     st.sidebar.title("Controls")
 
-    st.sidebar.subheader("Data Cleaning")
+    st.sidebar.subheader(
+        "Data Cleaning"
+    )
 
     outlier_option = st.sidebar.selectbox(
         "Handle Outliers",
@@ -479,7 +564,7 @@ if raw_df is not None:
         rows_to_show = st.slider(
             "Rows",
             5,
-            50,
+            100,
             10
         )
 
@@ -716,32 +801,34 @@ if raw_df is not None:
 
         elif chart_type == "Pie Chart":
 
-            col = st.selectbox(
-                "Category",
-                categorical_cols
-            )
+            if len(categorical_cols) > 0:
 
-            pie_data = (
-                filtered_df[col]
-                .value_counts()
-                .reset_index()
-            )
+                col = st.selectbox(
+                    "Category",
+                    categorical_cols
+                )
 
-            pie_data.columns = [
-                col,
-                "Count"
-            ]
+                pie_data = (
+                    filtered_df[col]
+                    .value_counts()
+                    .reset_index()
+                )
 
-            fig = px.pie(
-                pie_data,
-                names=col,
-                values="Count"
-            )
+                pie_data.columns = [
+                    col,
+                    "Count"
+                ]
 
-            st.plotly_chart(
-                fig,
-                use_container_width=True
-            )
+                fig = px.pie(
+                    pie_data,
+                    names=col,
+                    values="Count"
+                )
+
+                st.plotly_chart(
+                    fig,
+                    use_container_width=True
+                )
 
         # =================================================
         # HEATMAP
@@ -753,21 +840,23 @@ if raw_df is not None:
             "Correlation Heatmap"
         ):
 
-            corr = (
-                filtered_df[
-                    numeric_cols
-                ].corr()
-            )
+            if len(numeric_cols) > 0:
 
-            fig = px.imshow(
-                corr,
-                text_auto=True
-            )
+                corr = (
+                    filtered_df[
+                        numeric_cols
+                    ].corr()
+                )
 
-            st.plotly_chart(
-                fig,
-                use_container_width=True
-            )
+                fig = px.imshow(
+                    corr,
+                    text_auto=True
+                )
+
+                st.plotly_chart(
+                    fig,
+                    use_container_width=True
+                )
 
     # =====================================================
     # QUERY ENGINE
@@ -886,4 +975,3 @@ if raw_df is not None:
                         st.success(
                             f"Predicted {target}: {prediction[0]:.2f}"
                         )
-
