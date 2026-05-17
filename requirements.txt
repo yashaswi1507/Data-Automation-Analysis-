@@ -6,3 +6,4 @@ scikit-learn
 requests
 beautifulsoup4
 lxml
+kagglehub
