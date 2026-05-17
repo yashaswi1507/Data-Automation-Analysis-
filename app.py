@@ -526,7 +526,7 @@ if raw_df is not None:
 
         if len(numeric_cols) > 0:
 
-            c1, c2, c3, c4, c5 = st.columns(4)
+            c1, c2, c3, c4, c5 = st.columns(5)
 
             # =========================================
             # RAW MISSING VALUES
