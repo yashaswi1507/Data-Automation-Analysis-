@@ -574,8 +574,8 @@ if raw_df is not None:
             else:
 
                 c4.metric(
-                    "Average",
-                    "N/A"
+                    "Numeric Columns",
+                    len(numeric_cols)
                 )
 
         st.divider()
