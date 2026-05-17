@@ -547,14 +547,13 @@ if raw_df is not None:
                 )
             )
 
+            avg_col = numeric_cols[0]
+
+            avg_value = filtered_df[avg_col].mean()
+
             c4.metric(
-                "Average",
-                round(
-                    filtered_df[
-                        numeric_cols[0]
-                    ].mean(),
-                    2
-                )
+                    f"Avg {avg_col}",
+                    f"{avg_value:,.2f}"
             )
 
         st.divider()
