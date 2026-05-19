@@ -32,6 +32,11 @@ class DataPreprocessor:
 
             self.df[col] = (
                 self.df[col]
+                .replace("nan", np.nan)
+            )
+
+            self.df[col] = (
+                self.df[col]
                 .astype(str)
                 .str.strip()
             )
@@ -118,18 +123,7 @@ class DataPreprocessor:
                     )
                 )
 
-                for v in sample_values
-
-            ])
-
-            if date_ratio > 0.5:
-                continue
-
-            # =================================================
-            # SKIP TIME COLUMNS
-            # =================================================
-
-            time_ratio = np.mean([
+                or
 
                 bool(
                     re.match(
@@ -142,7 +136,7 @@ class DataPreprocessor:
 
             ])
 
-            if time_ratio > 0.5:
+            if date_ratio > 0.5:
                 continue
 
             # =================================================
@@ -171,28 +165,85 @@ class DataPreprocessor:
             try:
 
                 # =============================================
-                # EXTRACT TEXT PREFIX
+                # TITANIC CABIN SUPPORT
+                # C85 -> C + 85
                 # =============================================
 
-                text_part = (
-                    temp_col
-                    .str.extract(
-                        r'([A-Za-z./]+)',
-                        expand=False
+                cabin_match_ratio = np.mean([
+
+                    bool(
+                        re.match(
+                            r'^[A-Za-z]+\d+$',
+                            str(v).replace(" ", "")
+                        )
                     )
-                )
+
+                    for v in sample_values
+
+                ])
 
                 # =============================================
-                # EXTRACT NUMBER
+                # PROPERTY DATA SUPPORT
+                # 12 Lac
+                # 2 BHK
                 # =============================================
 
-                number_part = (
-                    temp_col
-                    .str.extract(
-                        r'(\d+)',
-                        expand=False
+                text_suffix_ratio = np.mean([
+
+                    bool(
+                        re.match(
+                            r'^\d+(\.\d+)?\s*[A-Za-z]+$',
+                            str(v)
+                        )
                     )
-                )
+
+                    for v in sample_values
+
+                ])
+
+                # =============================================
+                # EXTRACT TEXT PART
+                # =============================================
+
+                if text_suffix_ratio >= 0.5:
+
+                    text_part = (
+                        temp_col
+                        .str.extract(
+                            r'([A-Za-z./]+)$',
+                            expand=False
+                        )
+                    )
+
+                    number_part = (
+                        temp_col
+                        .str.extract(
+                            r'(\d+(?:\.\d+)?)',
+                            expand=False
+                        )
+                    )
+
+                else:
+
+                    text_part = (
+                        temp_col
+                        .str.extract(
+                            r'([A-Za-z./]+)',
+                            expand=False
+                        )
+                    )
+
+                    number_part = (
+                        temp_col
+                        .str.extract(
+                            r'(\d+(?:\.\d+)?)',
+                            expand=False
+                        )
+                    )
+
+                # =============================================
+                # VALIDATION
+                # =============================================
 
                 numeric_ratio = pd.to_numeric(
                     number_part,
@@ -203,14 +254,29 @@ class DataPreprocessor:
                     text_part.notna().mean()
                 )
 
+                unique_text = (
+                    text_part.nunique()
+                )
+
+                unique_numbers = (
+                    pd.to_numeric(
+                        number_part,
+                        errors="coerce"
+                    ).nunique()
+                )
+
                 # =============================================
-                # VALIDATION
+                # FINAL SAFE CHECK
                 # =============================================
 
                 if (
                     numeric_ratio >= 0.6
                     and
                     text_ratio >= 0.6
+                    and
+                    unique_numbers > 3
+                    and
+                    unique_text > 1
                 ):
 
                     self.df[
@@ -292,14 +358,6 @@ class DataPreprocessor:
         self.report.append(
             f"Total Missing Values Before Cleaning: {self.total_missing_before}"
         )
-
-        for col in self.original_null_counts.index:
-
-            if self.original_null_counts[col] > 0:
-
-                self.report.append(
-                    f"Missing in '{col}': {self.original_null_counts[col]}"
-                )
 
         # =====================================================
         # HANDLE MISSING VALUES
@@ -440,10 +498,6 @@ class DataPreprocessor:
                 f"Outliers in '{col}': {outliers}"
             )
 
-            # =============================================
-            # REMOVE OUTLIERS
-            # =============================================
-
             if (
                 self.outlier_option
                 == "Remove Outliers"
@@ -466,10 +520,6 @@ class DataPreprocessor:
                 self.report.append(
                     f"Removed outliers from '{col}'"
                 )
-
-            # =============================================
-            # CAP OUTLIERS
-            # =============================================
 
             elif (
                 self.outlier_option
@@ -500,3 +550,4 @@ class DataPreprocessor:
             )
 
         return self.df, self.report
+
