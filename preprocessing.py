@@ -26,31 +26,33 @@ class DataPreprocessor:
 
         for col in self.df.select_dtypes(include='object').columns:
 
-            self.df[col] = self.df[col].apply(
-                lambda x: x.strip()
-                if isinstance(x, str)
-                else x
+            self.df[col] = (
+                self.df[col]
+                .astype(str)
+                .str.strip()
             )
 
         # =====================================================
         # CONVERT WEIRD VALUES TO NaN
         # =====================================================
 
+        missing_values = [
+            "?",
+            "",
+            " ",
+            "NA",
+            "N/A",
+            "null",
+            "NULL",
+            "--",
+            "nan",
+            "NaN",
+            "None",
+            "none"
+        ]
+
         self.df.replace(
-            [
-                "?",
-                "",
-                " ",
-                "NA",
-                "N/A",
-                "null",
-                "NULL",
-                "--",
-                "nan",
-                "NaN",
-                "None",
-                "none"
-            ],
+            missing_values,
             np.nan,
             inplace=True
         )
@@ -63,10 +65,12 @@ class DataPreprocessor:
         )
 
         # =====================================================
-        # SAVE ORIGINAL MISSING VALUES
+        # SAVE ORIGINAL NULLS
         # =====================================================
 
-        self.original_null_counts = self.df.isnull().sum()
+        self.original_null_counts = (
+            self.df.isnull().sum()
+        )
 
         self.total_missing_before = (
             self.original_null_counts.sum()
@@ -76,43 +80,33 @@ class DataPreprocessor:
         # SMART FEATURE ENGINEERING
         # =====================================================
 
+        columns_to_drop = []
+
         for col in self.df.columns:
 
-            if not pd.api.types.is_object_dtype(self.df[col]):
+            if not pd.api.types.is_object_dtype(
+                self.df[col]
+            ):
                 continue
 
-            temp_col = self.df[col]
+            temp_col = (
+                self.df[col]
+                .dropna()
+                .astype(str)
+                .str.strip()
+            )
+
+            if len(temp_col) == 0:
+                continue
 
             sample_values = (
                 temp_col
-                .dropna()
-                .astype(str)
                 .head(100)
                 .tolist()
             )
 
-            if len(sample_values) == 0:
-                continue
-
             # =================================================
-            # DETECT MIXED VALUES
-            # =================================================
-
-            mixed_ratio = np.mean([
-
-                bool(re.search(r'[A-Za-z]', val))
-                and
-                bool(re.search(r'\d', val))
-
-                for val in sample_values
-
-            ])
-
-            if mixed_ratio < 0.7:
-                continue
-
-            # =================================================
-            # SKIP DATE COLUMNS
+            # DETECT DATE COLUMNS
             # =================================================
 
             date_ratio = np.mean([
@@ -120,7 +114,7 @@ class DataPreprocessor:
                 bool(
                     re.match(
                         r'^\d{1,4}[-/]\d{1,2}[-/]\d{1,4}$',
-                        val
+                        str(val)
                     )
                 )
 
@@ -128,8 +122,8 @@ class DataPreprocessor:
 
                 bool(
                     re.match(
-                        r'^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$',
-                        val
+                        r'^\d{1,2}:\d{2}',
+                        str(val)
                     )
                 )
 
@@ -137,19 +131,26 @@ class DataPreprocessor:
 
             ])
 
-            if date_ratio > 0.5:
+            if date_ratio >= 0.5:
                 continue
 
             # =================================================
-            # SKIP TIME COLUMNS
+            # DETECT MIXED TEXT + NUMBER
             # =================================================
 
-            time_ratio = np.mean([
+            mixed_ratio = np.mean([
 
                 bool(
-                    re.match(
-                        r'^\d{1,2}:\d{2}',
-                        val
+                    re.search(
+                        r'[A-Za-z]',
+                        str(val)
+                    )
+                )
+                and
+                bool(
+                    re.search(
+                        r'\d',
+                        str(val)
                     )
                 )
 
@@ -157,77 +158,151 @@ class DataPreprocessor:
 
             ])
 
-            if time_ratio > 0.5:
+            if mixed_ratio < 0.6:
                 continue
 
-            # =================================================
-            # EXTRACT TEXT PART
-            # =================================================
+            try:
 
-            text_part = temp_col.astype(str).str.extract(
-                r'^([A-Za-z./\s]+)',
-                expand=False
-            )
+                # =============================================
+                # EXTRACT TEXT PREFIX
+                # =============================================
 
-            # =================================================
-            # EXTRACT NUMBER PART
-            # =================================================
-
-            number_part = temp_col.astype(str).str.extract(
-                r'(\d+)$',
-                expand=False
-            )
-
-            # =================================================
-            # VALIDATION
-            # =================================================
-
-            numeric_ratio = pd.to_numeric(
-                number_part,
-                errors='coerce'
-            ).notna().mean()
-
-            text_ratio = text_part.notna().mean()
-
-            unique_text = text_part.nunique()
-
-            unique_numbers = (
-                pd.to_numeric(
-                    number_part,
-                    errors='coerce'
-                ).nunique()
-            )
-
-            # =================================================
-            # SAFE SPLIT
-            # =================================================
-
-            if (
-                numeric_ratio >= 0.7
-                and
-                text_ratio >= 0.7
-                and
-                unique_text > 1
-                and
-                unique_numbers > 3
-            ):
-
-                self.df[
-                    f"{col}_Type"
-                ] = (
-                    text_part.fillna("Unknown")
+                text_part = temp_col.str.extract(
+                    r'^([A-Za-z./\s]+)',
+                    expand=False
                 )
 
-                self.df[
-                    f"{col}_Number"
-                ] = pd.to_numeric(
+                text_part = (
+                    text_part
+                    .fillna("Unknown")
+                    .astype(str)
+                    .str.strip()
+                )
+
+                # =============================================
+                # EXTRACT NUMERIC PART
+                # =============================================
+
+                number_part = temp_col.str.extract(
+                    r'([\d,.]+)',
+                    expand=False
+                )
+
+                number_part = (
+                    number_part
+                    .astype(str)
+                    .str.replace(",", "", regex=False)
+                )
+
+                numeric_series = pd.to_numeric(
                     number_part,
                     errors='coerce'
                 )
 
-                self.report.append(
-                    f"✔ Split mixed column '{col}'"
+                # =============================================
+                # DETECT UNITS
+                # =============================================
+
+                unit_part = temp_col.str.extract(
+                    r'(?i)(lac|lakh|crore|cr|million|billion|k)',
+                    expand=False
                 )
+
+                # =============================================
+                # CONVERT PRICE UNITS
+                # =============================================
+
+                multiplier = pd.Series(
+                    1,
+                    index=temp_col.index,
+                    dtype=float
+                )
+
+                multiplier[
+                    unit_part.str.lower().isin(
+                        ["lac", "lakh"]
+                    )
+                ] = 100000
+
+                multiplier[
+                    unit_part.str.lower().isin(
+                        ["crore", "cr"]
+                    )
+                ] = 10000000
+
+                multiplier[
+                    unit_part.str.lower().isin(
+                        ["million"]
+                    )
+                ] = 1000000
+
+                multiplier[
+                    unit_part.str.lower().isin(
+                        ["billion"]
+                    )
+                ] = 1000000000
+
+                multiplier[
+                    unit_part.str.lower().isin(
+                        ["k"]
+                    )
+                ] = 1000
+
+                final_numbers = (
+                    numeric_series * multiplier
+                )
+
+                # =============================================
+                # VALIDATION
+                # =============================================
+
+                numeric_ratio = (
+                    final_numbers.notna().mean()
+                )
+
+                unique_numbers = (
+                    final_numbers.nunique()
+                )
+
+                unique_text = (
+                    text_part.nunique()
+                )
+
+                if (
+                    numeric_ratio >= 0.6
+                    and
+                    unique_numbers > 3
+                    and
+                    unique_text > 1
+                ):
+
+                    self.df[
+                        f"{col}_Type"
+                    ] = text_part
+
+                    self.df[
+                        f"{col}_Number"
+                    ] = final_numbers
+
+                    columns_to_drop.append(col)
+
+                    self.report.append(
+                        f"✔ Split mixed column '{col}' into Type and Number"
+                    )
+
+            except Exception:
+                pass
+
+        # =====================================================
+        # DROP ORIGINAL COLUMNS
+        # =====================================================
+
+        if columns_to_drop:
+
+            self.df.drop(
+                columns=columns_to_drop,
+                inplace=True
+            )
 
         # =====================================================
         # CONVERT MOSTLY NUMERIC COLUMNS
@@ -242,13 +317,15 @@ class DataPreprocessor:
                     errors='coerce'
                 )
 
-                ratio = numeric_check.notna().mean()
+                ratio = (
+                    numeric_check.notna().mean()
+                )
 
                 if ratio > 0.8:
 
                     self.df[col] = numeric_check
 
-            except:
+            except Exception:
                 pass
 
         # =====================================================
@@ -257,7 +334,9 @@ class DataPreprocessor:
 
         total_rows = len(self.df)
 
-        duplicate_count = self.df.duplicated().sum()
+        duplicate_count = (
+            self.df.duplicated().sum()
+        )
 
         self.report.append(
             f"Total Rows: {total_rows}"
@@ -285,69 +364,93 @@ class DataPreprocessor:
 
         for col in self.df.columns:
 
-            missing = self.df[col].isnull().sum()
+            missing = (
+                self.df[col].isnull().sum()
+            )
 
-            if missing > 0:
+            if missing == 0:
+                continue
 
-                # =============================================
-                # NUMERIC
-                # =============================================
+            # =============================================
+            # NUMERIC COLUMNS
+            # =============================================
 
-                if pd.api.types.is_numeric_dtype(
-                    self.df[col]
-                ):
+            if pd.api.types.is_numeric_dtype(
+                self.df[col]
+            ):
 
-                    if self.missing_option == "Mean":
+                if self.missing_option == "Mean":
 
-                        fill_value = self.df[col].mean()
-                        method_used = "Mean"
+                    fill_value = (
+                        self.df[col].mean()
+                    )
 
-                    elif self.missing_option == "Median":
+                    method_used = "Mean"
 
-                        fill_value = self.df[col].median()
-                        method_used = "Median"
+                elif self.missing_option == "Median":
 
-                    elif self.missing_option == "Mode":
+                    fill_value = (
+                        self.df[col].median()
+                    )
 
-                        fill_value = self.df[col].mode()[0]
-                        method_used = "Mode"
+                    method_used = "Median"
 
-                    elif self.missing_option == "Drop Rows":
+                elif self.missing_option == "Mode":
 
-                        self.df.dropna(inplace=True)
-                        method_used = "Drop Rows"
-
-                    if self.missing_option != "Drop Rows":
-
-                        self.df[col] = self.df[col].fillna(
-                            fill_value
-                        )
-
-                # =============================================
-                # CATEGORICAL
-                # =============================================
-
-                else:
-
-                    mode_value = self.df[col].mode()
-
-                    if len(mode_value) > 0:
-
-                        self.df[col] = self.df[col].fillna(
-                            mode_value[0]
-                        )
-
-                    else:
-
-                        self.df[col] = self.df[col].fillna(
-                            "Unknown"
-                        )
+                    fill_value = (
+                        self.df[col]
+                        .mode()[0]
+                    )
 
                     method_used = "Mode"
 
-                self.report.append(
-                    f"✔ Handled missing values in '{col}' using {method_used}"
+                elif self.missing_option == "Drop Rows":
+
+                    self.df.dropna(
+                        subset=[col],
+                        inplace=True
+                    )
+
+                    method_used = "Drop Rows"
+
+                if (
+                    self.missing_option
+                    != "Drop Rows"
+                ):
+
+                    self.df[col] = (
+                        self.df[col]
+                        .fillna(fill_value)
+                    )
+
+            # =============================================
+            # CATEGORICAL COLUMNS
+            # =============================================
+
+            else:
+
+                mode_value = (
+                    self.df[col].mode()
                 )
+
+                if len(mode_value) > 0:
+
+                    fill_value = mode_value[0]
+
+                else:
+
+                    fill_value = "Unknown"
+
+                self.df[col] = (
+                    self.df[col]
+                    .fillna(fill_value)
+                )
+
+                method_used = "Mode"
+
+            self.report.append(
+                f"✔ Handled missing values in '{col}' using {method_used}"
+            )
 
         # =====================================================
         # REMOVE DUPLICATES
@@ -355,10 +458,13 @@ class DataPreprocessor:
 
         before_duplicates = len(self.df)
 
-        self.df.drop_duplicates(inplace=True)
+        self.df.drop_duplicates(
+            inplace=True
+        )
 
         removed_duplicates = (
-            before_duplicates - len(self.df)
+            before_duplicates
+            - len(self.df)
         )
 
         self.report.append(
@@ -371,81 +477,107 @@ class DataPreprocessor:
 
         outlier_count = 0
 
-        numeric_cols = self.df.select_dtypes(
-            include='number'
-        ).columns
+        numeric_cols = (
+            self.df
+            .select_dtypes(include='number')
+            .columns
+        )
 
         for col in numeric_cols:
 
-            Q1 = self.df[col].quantile(0.25)
+            try:
 
-            Q3 = self.df[col].quantile(0.75)
-
-            IQR = Q3 - Q1
-
-            lower = Q1 - 1.5 * IQR
-
-            upper = Q3 + 1.5 * IQR
-
-            outliers = (
-
-                (
-                    (self.df[col] < lower)
-                    |
-                    (self.df[col] > upper)
-
-                ).sum()
-
-            )
-
-            if outliers > 0:
-
-                outlier_count += outliers
-
-                self.report.append(
-                    f"Outliers in '{col}': {outliers}"
+                Q1 = (
+                    self.df[col]
+                    .quantile(0.25)
                 )
 
-                # =============================================
-                # REMOVE OUTLIERS
-                # =============================================
+                Q3 = (
+                    self.df[col]
+                    .quantile(0.75)
+                )
 
-                if (
-                    self.outlier_option
-                    == "Remove Outliers"
-                ):
+                IQR = Q3 - Q1
 
-                    self.df = self.df[
+                lower = (
+                    Q1 - 1.5 * IQR
+                )
 
-                        (self.df[col] >= lower)
+                upper = (
+                    Q3 + 1.5 * IQR
+                )
 
-                        &
+                outliers = (
 
-                        (self.df[col] <= upper)
+                    (
+                        (
+                            self.df[col] < lower
+                        )
+                        |
+                        (
+                            self.df[col] > upper
+                        )
+                    ).sum()
 
-                    ]
+                )
 
-                    self.report.append(
-                        f"Removed outliers from '{col}'"
-                    )
+                if outliers > 0:
 
-                # =============================================
-                # CAP OUTLIERS
-                # =============================================
-
-                elif (
-                    self.outlier_option
-                    == "Cap Outliers"
-                ):
-
-                    self.df[col] = self.df[col].clip(
-                        lower,
-                        upper
-                    )
+                    outlier_count += outliers
 
                     self.report.append(
-                        f"Capped outliers in '{col}'"
+                        f"Outliers in '{col}': {outliers}"
                     )
+
+                    # =====================================
+                    # REMOVE OUTLIERS
+                    # =====================================
+
+                    if (
+                        self.outlier_option
+                        == "Remove Outliers"
+                    ):
+
+                        self.df = self.df[
+
+                            (
+                                self.df[col]
+                                >= lower
+                            )
+
+                            &
+
+                            (
+                                self.df[col]
+                                <= upper
+                            )
+
+                        ]
+
+                        self.report.append(
+                            f"Removed outliers from '{col}'"
+                        )
+
+                    # =====================================
+                    # CAP OUTLIERS
+                    # =====================================
+
+                    elif (
+                        self.outlier_option
+                        == "Cap Outliers"
+                    ):
+
+                        self.df[col] = (
+                            self.df[col]
+                            .clip(lower, upper)
+                        )
+
+                        self.report.append(
+                            f"Capped outliers in '{col}'"
+                        )
+
+            except Exception:
+                pass
 
         # =====================================================
         # FINAL REPORT
