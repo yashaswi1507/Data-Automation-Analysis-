@@ -8,7 +8,6 @@ import glob
 import zipfile
 import requests
 import kagglehub
-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -26,6 +25,12 @@ from query_engine import (
 )
 
 from ml_engine import train_prediction_model
+
+from dashboard_generator import (
+    generate_kpis,
+    generate_auto_charts,
+    generate_insights
+)
 
 # =========================================================
 # PAGE CONFIG
@@ -495,13 +500,14 @@ if raw_df is not None:
     # TABS
     # =====================================================
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
         [
             "Dashboard",
             "Summary",
             "Visualization Studio",
             "Query Engine",
             "ML Prediction"
+            "Auto Dashboard"
         ]
     )
 
@@ -1133,3 +1139,86 @@ if raw_df is not None:
                         st.success(
                             f"Predicted {target}: {prediction[0]:.2f}"
                         )
+                        
+    # =====================================================
+    # AUTO DASHBOARD
+    # =====================================================
+
+    with tab6:
+
+        st.subheader(
+            "AI Auto Dashboard"
+        )
+
+        # ================================================
+        # KPIs
+        # ================================================
+
+        metrics = generate_kpis(
+            filtered_df
+        )
+
+        c1, c2, c3, c4 = st.columns(4)
+
+        metric_keys = list(
+            metrics.keys()
+        )
+
+        c1.metric(
+            metric_keys[0],
+            metrics[metric_keys[0]]
+        )
+
+        c2.metric(
+            metric_keys[1],
+            metrics[metric_keys[1]]
+        )
+
+        c3.metric(
+            metric_keys[2],
+            metrics[metric_keys[2]]
+        )
+
+        c4.metric(
+            metric_keys[3],
+            metrics[metric_keys[3]]
+        )
+
+        st.divider()
+
+        # ================================================
+        # AUTO CHARTS
+        # ================================================
+
+        st.subheader(
+            "Auto Generated Charts"
+        )
+
+        charts = generate_auto_charts(
+            filtered_df
+        )
+
+        for fig in charts:
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True
+            )
+
+        st.divider()
+
+        # ================================================
+        # AI INSIGHTS
+        # ================================================
+
+        st.subheader(
+            "AI Insights"
+        )
+
+        insights = generate_insights(
+            filtered_df
+        )
+
+        for insight in insights:
+
+            st.success(insight)
