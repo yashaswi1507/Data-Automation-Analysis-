@@ -26,10 +26,10 @@ class DataPreprocessor:
 
         for col in self.df.select_dtypes(include='object').columns:
 
-            self.df[col] = (
-                self.df[col]
-                .astype(str)
-                .str.strip()
+            self.df[col] = self.df[col].apply(
+                lambda x: x.strip()
+                if isinstance(x, str)
+                else x
             )
 
         # =====================================================
@@ -76,22 +76,17 @@ class DataPreprocessor:
         # SMART FEATURE ENGINEERING
         # =====================================================
 
-        columns_to_drop = []
-
         for col in self.df.columns:
 
-            if not pd.api.types.is_string_dtype(self.df[col]):
+            if not pd.api.types.is_object_dtype(self.df[col]):
                 continue
 
-            temp_col = (
-                self.df[col]
-                .astype(str)
-                .str.strip()
-            )
+            temp_col = self.df[col]
 
             sample_values = (
                 temp_col
                 .dropna()
+                .astype(str)
                 .head(100)
                 .tolist()
             )
@@ -105,16 +100,19 @@ class DataPreprocessor:
 
             mixed_ratio = np.mean([
 
-                bool(re.search(r'[A-Za-z]', str(val)))
+                bool(re.search(r'[A-Za-z]', val))
                 and
-                bool(re.search(r'\d', str(val)))
+                bool(re.search(r'\d', val))
 
                 for val in sample_values
 
             ])
 
+            if mixed_ratio < 0.7:
+                continue
+
             # =================================================
-            # DETECT DATE COLUMNS
+            # SKIP DATE COLUMNS
             # =================================================
 
             date_ratio = np.mean([
@@ -122,7 +120,7 @@ class DataPreprocessor:
                 bool(
                     re.match(
                         r'^\d{1,4}[-/]\d{1,2}[-/]\d{1,4}$',
-                        str(val)
+                        val
                     )
                 )
 
@@ -131,16 +129,7 @@ class DataPreprocessor:
                 bool(
                     re.match(
                         r'^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$',
-                        str(val)
-                    )
-                )
-
-                or
-
-                bool(
-                    re.match(
-                        r'^[A-Za-z]+\s+\d{4}$',
-                        str(val)
+                        val
                     )
                 )
 
@@ -148,8 +137,11 @@ class DataPreprocessor:
 
             ])
 
+            if date_ratio > 0.5:
+                continue
+
             # =================================================
-            # DETECT TIME COLUMNS
+            # SKIP TIME COLUMNS
             # =================================================
 
             time_ratio = np.mean([
@@ -157,7 +149,7 @@ class DataPreprocessor:
                 bool(
                     re.match(
                         r'^\d{1,2}:\d{2}',
-                        str(val)
+                        val
                     )
                 )
 
@@ -165,122 +157,77 @@ class DataPreprocessor:
 
             ])
 
-            # =================================================
-            # SKIP DATE/TIME COLUMNS
-            # =================================================
-
-            if (
-                date_ratio >= 0.5
-                or
-                time_ratio >= 0.5
-            ):
+            if time_ratio > 0.5:
                 continue
 
             # =================================================
-            # SPLIT MIXED COLUMNS
+            # EXTRACT TEXT PART
             # =================================================
 
-            if mixed_ratio >= 0.6:
-
-                try:
-
-                    # =========================================
-                    # EXTRACT TEXT PREFIX
-                    # =========================================
-
-                    text_part = temp_col.str.extract(
-                        r'^([A-Za-z./\s]+)',
-                        expand=False
-                    )
-
-                    # =========================================
-                    # EXTRACT LAST NUMBER
-                    # =========================================
-
-                    number_part = temp_col.str.extract(
-                        r'(\d+)$',
-                        expand=False
-                    )
-
-                    # =========================================
-                    # CLEAN TEXT
-                    # =========================================
-
-                    text_part = (
-                        text_part
-                        .astype(str)
-                        .str.strip()
-                    )
-
-                    # =========================================
-                    # VALIDATION
-                    # =========================================
-
-                    numeric_ratio = pd.to_numeric(
-                        number_part,
-                        errors='coerce'
-                    ).notna().mean()
-
-                    text_ratio = (
-                        text_part.notna().mean()
-                    )
-
-                    unique_text = text_part.nunique()
-
-                    unique_numbers = (
-                        pd.to_numeric(
-                            number_part,
-                            errors='coerce'
-                        ).nunique()
-                    )
-
-                    # =========================================
-                    # FINAL SAFE CHECK
-                    # =========================================
-
-                    if (
-                        numeric_ratio >= 0.6
-                        and
-                        text_ratio >= 0.6
-                        and
-                        unique_text > 1
-                        and
-                        unique_numbers > 3
-                    ):
-
-                        self.df[
-                            f"{col}_Type"
-                        ] = (
-                            text_part
-                            .fillna("Unknown")
-                        )
-
-                        self.df[
-                            f"{col}_Number"
-                        ] = pd.to_numeric(
-                            number_part,
-                            errors='coerce'
-                        )
-
-                        columns_to_drop.append(col)
-
-                        self.report.append(
-                            f"✔ Split mixed column '{col}' into Type and Number"
-                        )
-
-                except:
-                    pass
-
-        # =====================================================
-        # DROP ORIGINAL SPLIT COLUMNS
-        # =====================================================
-
-        if columns_to_drop:
-
-            self.df.drop(
-                columns=columns_to_drop,
-                inplace=True
+            text_part = temp_col.astype(str).str.extract(
+                r'^([A-Za-z./\s]+)',
+                expand=False
             )
+
+            # =================================================
+            # EXTRACT NUMBER PART
+            # =================================================
+
+            number_part = temp_col.astype(str).str.extract(
+                r'(\d+)$',
+                expand=False
+            )
+
+            # =================================================
+            # VALIDATION
+            # =================================================
+
+            numeric_ratio = pd.to_numeric(
+                number_part,
+                errors='coerce'
+            ).notna().mean()
+
+            text_ratio = text_part.notna().mean()
+
+            unique_text = text_part.nunique()
+
+            unique_numbers = (
+                pd.to_numeric(
+                    number_part,
+                    errors='coerce'
+                ).nunique()
+            )
+
+            # =================================================
+            # SAFE SPLIT
+            # =================================================
+
+            if (
+                numeric_ratio >= 0.7
+                and
+                text_ratio >= 0.7
+                and
+                unique_text > 1
+                and
+                unique_numbers > 3
+            ):
+
+                self.df[
+                    f"{col}_Type"
+                ] = (
+                    text_part.fillna("Unknown")
+                )
+
+                self.df[
+                    f"{col}_Number"
+                ] = pd.to_numeric(
+                    number_part,
+                    errors='coerce'
+                )
+
+                self.report.append(
+                    f"✔ Split mixed column '{col}'"
+                )
 
         # =====================================================
         # CONVERT MOSTLY NUMERIC COLUMNS
