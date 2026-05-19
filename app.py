@@ -506,7 +506,7 @@ if raw_df is not None:
             "Summary",
             "Visualization Studio",
             "Query Engine",
-            "ML Prediction"
+            "ML Prediction",
             "Auto Dashboard"
         ]
     )
