@@ -1,4 +1,3 @@
-
 import pandas as pd
 import numpy as np
 import re
@@ -74,7 +73,7 @@ class DataPreprocessor:
         )
 
         # =====================================================
-        # SAFE FEATURE ENGINEERING
+        # SMART FEATURE ENGINEERING
         # =====================================================
 
         columns_to_drop = []
@@ -92,7 +91,7 @@ class DataPreprocessor:
                 sample_values = (
                     temp_col
                     .dropna()
-                    .head(30)
+                    .head(50)
                     .tolist()
                 )
 
@@ -100,17 +99,56 @@ class DataPreprocessor:
                     continue
 
                 # =================================================
-                # STRICT TEXT-NUMBER PATTERN
-                # Example:
-                # Product-101
-                # User_45
+                # DETECT LETTER + NUMBER MIX
                 # =================================================
 
-                pattern_match_ratio = np.mean([
+                has_letters = np.mean([
 
                     bool(
-                        re.match(
-                            r'^[A-Za-z]+[-_][0-9]+$',
+                        re.search(
+                            r'[A-Za-z]',
+                            str(val)
+                        )
+                    )
+
+                    for val in sample_values
+
+                ]) > 0.5
+
+                has_numbers = np.mean([
+
+                    bool(
+                        re.search(
+                            r'\d',
+                            str(val)
+                        )
+                    )
+
+                    for val in sample_values
+
+                ]) > 0.5
+
+                if not (has_letters and has_numbers):
+                    continue
+
+                # =================================================
+                # TITANIC TICKET SUPPORT
+                # Examples:
+                # PC 17599
+                # A/5 21171
+                # STON/O2. 3101282
+                # =================================================
+
+                text_number_pattern_ratio = np.mean([
+
+                    bool(
+                        re.search(
+                            r'[A-Za-z]',
+                            str(val)
+                        )
+                        and
+                        re.search(
+                            r'\d',
                             str(val)
                         )
                     )
@@ -120,60 +158,96 @@ class DataPreprocessor:
                 ])
 
                 # =================================================
-                # SPLIT ONLY IF 90% VALUES MATCH
+                # TITANIC CABIN SUPPORT
+                # Examples:
+                # C85
+                # B28
+                # E101
                 # =================================================
 
-                if pattern_match_ratio >= 0.9:
+                cabin_pattern_ratio = np.mean([
+
+                    bool(
+                        re.match(
+                            r'^[A-Za-z]+\d+$',
+                            str(val).replace(" ", "")
+                        )
+                    )
+
+                    for val in sample_values
+
+                ])
+
+                # =================================================
+                # SAFE SPLIT CONDITION
+                # =================================================
+
+                should_split = (
+
+                    text_number_pattern_ratio >= 0.7
+                    or
+                    cabin_pattern_ratio >= 0.7
+
+                )
+
+                if should_split:
 
                     try:
 
-                        split_data = (
-                            temp_col
-                            .str.split(
-                                r'[-_]',
-                                expand=True
-                            )
+                        # =========================================
+                        # EXTRACT TEXT PART
+                        # =========================================
+
+                        text_part = temp_col.str.extract(
+                            r'([A-Za-z./]+)',
+                            expand=False
                         )
 
-                        # ONLY EXACT 2 PARTS
-                        if split_data.shape[1] == 2:
+                        # =========================================
+                        # EXTRACT NUMBER PART
+                        # =========================================
 
-                            left_part = (
-                                split_data[0]
-                                .astype(str)
-                                .str.strip()
+                        number_part = temp_col.str.extract(
+                            r'(\d+)',
+                            expand=False
+                        )
+
+                        numeric_ratio = pd.to_numeric(
+                            number_part,
+                            errors='coerce'
+                        ).notna().mean()
+
+                        text_ratio = text_part.notna().mean()
+
+                        # =========================================
+                        # FINAL VALIDATION
+                        # =========================================
+
+                        if (
+                            numeric_ratio >= 0.6
+                            and
+                            text_ratio >= 0.6
+                        ):
+
+                            self.df[
+                                f"{col}_Type"
+                            ] = (
+                                text_part
+                                .fillna("Unknown")
                             )
 
-                            right_part = (
-                                split_data[1]
-                                .astype(str)
-                                .str.strip()
-                            )
-
-                            # VALIDATE RIGHT SIDE NUMERIC
-                            numeric_ratio = pd.to_numeric(
-                                right_part,
+                            self.df[
+                                f"{col}_Number"
+                            ] = pd.to_numeric(
+                                number_part,
                                 errors='coerce'
-                            ).notna().mean()
+                            )
 
-                            if numeric_ratio >= 0.9:
+                            columns_to_drop.append(col)
 
-                                self.df[
-                                    f"{col}_Type"
-                                ] = left_part
-
-                                self.df[
-                                    f"{col}_Number"
-                                ] = pd.to_numeric(
-                                    right_part,
-                                    errors='coerce'
-                                )
-
-                                columns_to_drop.append(col)
-
-                                self.report.append(
-                                    f"✔ Split mixed column '{col}'"
-                                )
+                            self.report.append(
+                                f"✔ Split mixed column '{col}' into Type and Number"
+                            )
 
                     except:
                         pass
@@ -204,7 +278,6 @@ class DataPreprocessor:
 
                 ratio = numeric_check.notna().mean()
 
-                # ONLY IF MOSTLY NUMERIC
                 if ratio > 0.8:
 
                     self.df[col] = numeric_check
@@ -423,4 +496,3 @@ class DataPreprocessor:
             )
 
         return self.df, self.report
-
