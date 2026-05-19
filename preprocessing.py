@@ -1,3 +1,4 @@
+
 import pandas as pd
 import numpy as np
 import re
@@ -73,7 +74,7 @@ class DataPreprocessor:
         )
 
         # =====================================================
-        # FEATURE ENGINEERING FIRST
+        # FEATURE ENGINEERING
         # =====================================================
 
         columns_to_drop = []
@@ -88,10 +89,6 @@ class DataPreprocessor:
                     .str.strip()
                 )
 
-                # =================================================
-                # IGNORE FAKE NAN STRINGS
-                # =================================================
-
                 temp_col = temp_col.replace(
                     ["nan", "None"],
                     np.nan
@@ -100,12 +97,16 @@ class DataPreprocessor:
                 sample_values = (
                     temp_col
                     .dropna()
-                    .head(20)
+                    .head(30)
                     .tolist()
                 )
 
                 if len(sample_values) == 0:
                     continue
+
+                # =================================================
+                # CHECK LETTERS + NUMBERS
+                # =================================================
 
                 contains_letters = temp_col.str.contains(
                     r'[A-Za-z]',
@@ -123,7 +124,7 @@ class DataPreprocessor:
                 has_numbers = contains_numbers.any()
 
                 # =================================================
-                # SMART MIXED COLUMN DETECTION
+                # DETECT STRUCTURED MIXED FORMAT
                 # =================================================
 
                 separators = [
@@ -152,10 +153,6 @@ class DataPreprocessor:
                         found_separator = sep
                         break
 
-                # =================================================
-                # VALID STRUCTURED MIXED DATA
-                # =================================================
-
                 valid_split_pattern = False
 
                 if found_separator is not None:
@@ -177,7 +174,7 @@ class DataPreprocessor:
                         valid_split_pattern = True
 
                 # =================================================
-                # AVOID DATE / TIME LIKE COLUMNS
+                # AVOID DATE/TIME COLUMNS
                 # =================================================
 
                 date_like_pattern = any(
@@ -205,7 +202,7 @@ class DataPreprocessor:
                 )
 
                 # =================================================
-                # HANDLE MIXED COLUMNS SAFELY
+                # SAFE SPLIT LOGIC
                 # =================================================
 
                 if (
@@ -234,42 +231,66 @@ class DataPreprocessor:
 
                         )
 
-                        # only split 2-part structures
+                        # ONLY SPLIT IF EXACTLY 2 PARTS
                         if split_data.shape[1] == 2:
 
-                            # ================= TYPE COLUMN =================
-
-                            self.df[
-                                f"{col}_Type"
-                            ] = (
-
+                            left_part = (
                                 split_data[0]
+                                .astype(str)
                                 .str.strip()
-
                             )
 
-                            # ================= NUMBER COLUMN =================
+                            right_part = (
+                                split_data[1]
+                                .astype(str)
+                                .str.strip()
+                            )
 
-                            self.df[
-                                f"{col}_Number"
-                            ] = pd.to_numeric(
+                            # =========================================
+                            # VALIDATE:
+                            # LEFT = TEXT
+                            # RIGHT = NUMBER
+                            # =========================================
 
-                                split_data[1],
+                            left_has_text = left_part.str.contains(
+                                r'[A-Za-z]',
+                                regex=True,
+                                na=False
+                            ).mean()
 
+                            right_numeric = pd.to_numeric(
+                                right_part,
                                 errors='coerce'
-                            )
+                            ).notna().mean()
 
-                            columns_to_drop.append(col)
+                            if (
+                                left_has_text > 0.7
+                                and
+                                right_numeric > 0.7
+                            ):
 
-                            self.report.append(
-                                f"✔ Split mixed column '{col}' into Type and Number"
-                            )
+                                self.df[
+                                    f"{col}_Type"
+                                ] = left_part
+
+                                self.df[
+                                    f"{col}_Number"
+                                ] = pd.to_numeric(
+                                    right_part,
+                                    errors='coerce'
+                                )
+
+                                columns_to_drop.append(col)
+
+                                self.report.append(
+                                    f"✔ Split mixed column '{col}' into Type and Number"
+                                )
 
                     except:
                         pass
 
                 # =================================================
-                # HANDLE MULTI VALUE TEXT
+                # MULTI WORD TEXT CLEANING
                 # =================================================
 
                 elif (
@@ -278,15 +299,28 @@ class DataPreprocessor:
                     .mean() > 0.3
                 ):
 
-                    self.df[col] = (
+                    avg_words = (
                         temp_col
-                        .str.split()
-                        .str[0]
+                        .dropna()
+                        .astype(str)
+                        .apply(
+                            lambda x: len(x.split())
+                        )
+                        .mean()
                     )
 
-                    self.report.append(
-                        f"✔ Simplified multi-value column '{col}'"
-                    )
+                    # only simplify very long text columns
+                    if avg_words > 4:
+
+                        self.df[col] = (
+                            temp_col
+                            .str.split()
+                            .str[0]
+                        )
+
+                        self.report.append(
+                            f"✔ Simplified text column '{col}'"
+                        )
 
         # =====================================================
         # DROP ORIGINAL MIXED COLUMNS
@@ -314,7 +348,6 @@ class DataPreprocessor:
 
                 ratio = numeric_check.notna().mean()
 
-                # Convert only if mostly numeric
                 if ratio > 0.8:
 
                     self.df[col] = numeric_check
@@ -323,7 +356,7 @@ class DataPreprocessor:
                 pass
 
         # =====================================================
-        # BEFORE CLEANING REPORT
+        # REPORT BEFORE CLEANING
         # =====================================================
 
         total_rows = len(self.df)
@@ -360,9 +393,9 @@ class DataPreprocessor:
 
             if missing > 0:
 
-                # =================================================
+                # =============================================
                 # NUMERIC
-                # =================================================
+                # =============================================
 
                 if pd.api.types.is_numeric_dtype(
                     self.df[col]
@@ -394,9 +427,9 @@ class DataPreprocessor:
                             fill_value
                         )
 
-                # =================================================
+                # =============================================
                 # CATEGORICAL
-                # =================================================
+                # =============================================
 
                 else:
 
@@ -477,9 +510,9 @@ class DataPreprocessor:
                     f"Outliers in '{col}': {outliers}"
                 )
 
-                # =================================================
+                # =============================================
                 # REMOVE OUTLIERS
-                # =================================================
+                # =============================================
 
                 if (
                     self.outlier_option
@@ -500,9 +533,9 @@ class DataPreprocessor:
                         f"Removed outliers from '{col}'"
                     )
 
-                # =================================================
+                # =============================================
                 # CAP OUTLIERS
-                # =================================================
+                # =============================================
 
                 elif (
                     self.outlier_option
