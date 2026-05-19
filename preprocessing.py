@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import re
 
 
 class DataPreprocessor:
@@ -46,7 +47,9 @@ class DataPreprocessor:
                 "NULL",
                 "--",
                 "nan",
-                "NaN"
+                "NaN",
+                "None",
+                "none"
             ],
             np.nan,
             inplace=True
@@ -85,11 +88,24 @@ class DataPreprocessor:
                     .str.strip()
                 )
 
-                # Ignore fake NaN strings
+                # =================================================
+                # IGNORE FAKE NAN STRINGS
+                # =================================================
+
                 temp_col = temp_col.replace(
                     ["nan", "None"],
                     np.nan
                 )
+
+                sample_values = (
+                    temp_col
+                    .dropna()
+                    .head(20)
+                    .tolist()
+                )
+
+                if len(sample_values) == 0:
+                    continue
 
                 contains_letters = temp_col.str.contains(
                     r'[A-Za-z]',
@@ -107,51 +123,150 @@ class DataPreprocessor:
                 has_numbers = contains_numbers.any()
 
                 # =================================================
-                # HANDLE MIXED COLUMNS
+                # SMART MIXED COLUMN DETECTION
                 # =================================================
 
-                if has_letters and has_numbers:
+                separators = [
+                    "-",
+                    "_",
+                    "|",
+                    "/"
+                ]
 
-                    # ================= TYPE COLUMN =================
+                found_separator = None
 
-                    self.df[f"{col}_Type"] = (
+                for sep in separators:
 
-                        temp_col
-                        .str.extract(
-                            r'([A-Za-z./]+)',
-                            expand=False
+                    matches = [
+
+                        sep in str(val)
+
+                        for val in sample_values
+                    ]
+
+                    if (
+                        sum(matches)
+                        >= len(sample_values) * 0.8
+                    ):
+
+                        found_separator = sep
+                        break
+
+                # =================================================
+                # VALID STRUCTURED MIXED DATA
+                # =================================================
+
+                valid_split_pattern = False
+
+                if found_separator is not None:
+
+                    split_lengths = []
+
+                    for val in sample_values:
+
+                        parts = str(val).split(
+                            found_separator
                         )
 
+                        split_lengths.append(
+                            len(parts)
+                        )
+
+                    if len(set(split_lengths)) == 1:
+
+                        valid_split_pattern = True
+
+                # =================================================
+                # AVOID DATE / TIME LIKE COLUMNS
+                # =================================================
+
+                date_like_pattern = any(
+
+                    re.search(
+
+                        r'^\d{4}[-/]\d{1,2}[-/]\d{1,2}$',
+
+                        str(val)
                     )
 
-                    self.df[f"{col}_Type"] = (
-                        self.df[f"{col}_Type"]
-                        .fillna("Unknown")
+                    for val in sample_values
+                )
+
+                time_like_pattern = any(
+
+                    re.search(
+
+                        r'^\d{1,2}:\d{2}',
+
+                        str(val)
                     )
 
-                    # ================= NUMBER COLUMN =================
+                    for val in sample_values
+                )
 
-                    number_col = pd.to_numeric(
+                # =================================================
+                # HANDLE MIXED COLUMNS SAFELY
+                # =================================================
 
-                        temp_col
-                        .str.extract(
-                            r'(\d+)',
-                            expand=False
-                        ),
+                if (
 
-                        errors='coerce'
-                    )
+                    has_letters
+                    and
+                    has_numbers
+                    and
+                    valid_split_pattern
+                    and
+                    not date_like_pattern
+                    and
+                    not time_like_pattern
 
-                    # Fill engineered missing values
-                    number_col = number_col.fillna(-1)
+                ):
 
-                    self.df[f"{col}_Number"] = number_col
+                    try:
 
-                    columns_to_drop.append(col)
+                        split_data = (
 
-                    self.report.append(
-                        f"✔ Split mixed column '{col}' into Type and Number"
-                    )
+                            temp_col
+                            .str.split(
+                                found_separator,
+                                expand=True
+                            )
+
+                        )
+
+                        # only split 2-part structures
+                        if split_data.shape[1] == 2:
+
+                            # ================= TYPE COLUMN =================
+
+                            self.df[
+                                f"{col}_Type"
+                            ] = (
+
+                                split_data[0]
+                                .str.strip()
+
+                            )
+
+                            # ================= NUMBER COLUMN =================
+
+                            self.df[
+                                f"{col}_Number"
+                            ] = pd.to_numeric(
+
+                                split_data[1],
+
+                                errors='coerce'
+                            )
+
+                            columns_to_drop.append(col)
+
+                            self.report.append(
+                                f"✔ Split mixed column '{col}' into Type and Number"
+                            )
+
+                    except:
+                        pass
 
                 # =================================================
                 # HANDLE MULTI VALUE TEXT
@@ -205,7 +320,6 @@ class DataPreprocessor:
                     self.df[col] = numeric_check
 
             except:
-
                 pass
 
         # =====================================================
@@ -246,7 +360,9 @@ class DataPreprocessor:
 
             if missing > 0:
 
-                # ================= NUMERIC =================
+                # =================================================
+                # NUMERIC
+                # =================================================
 
                 if pd.api.types.is_numeric_dtype(
                     self.df[col]
@@ -278,7 +394,9 @@ class DataPreprocessor:
                             fill_value
                         )
 
-                # ================= CATEGORICAL =================
+                # =================================================
+                # CATEGORICAL
+                # =================================================
 
                 else:
 
@@ -359,7 +477,9 @@ class DataPreprocessor:
                     f"Outliers in '{col}': {outliers}"
                 )
 
-                # ================= REMOVE =================
+                # =================================================
+                # REMOVE OUTLIERS
+                # =================================================
 
                 if (
                     self.outlier_option
@@ -380,7 +500,9 @@ class DataPreprocessor:
                         f"Removed outliers from '{col}'"
                     )
 
-                # ================= CAP =================
+                # =================================================
+                # CAP OUTLIERS
+                # =================================================
 
                 elif (
                     self.outlier_option
