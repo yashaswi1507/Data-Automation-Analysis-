@@ -91,7 +91,7 @@ class DataPreprocessor:
                 sample_values = (
                     temp_col
                     .dropna()
-                    .head(50)
+                    .head(100)
                     .tolist()
                 )
 
@@ -99,91 +99,21 @@ class DataPreprocessor:
                     continue
 
                 # =================================================
-                # DETECT LETTER + NUMBER MIX
+                # DETECT MIXED VALUES
                 # =================================================
 
-                has_letters = np.mean([
+                mixed_ratio = np.mean([
 
-                    bool(
-                        re.search(
-                            r'[A-Za-z]',
-                            str(val)
-                        )
-                    )
-
-                    for val in sample_values
-
-                ]) > 0.5
-
-                has_numbers = np.mean([
-
-                    bool(
-                        re.search(
-                            r'\d',
-                            str(val)
-                        )
-                    )
-
-                    for val in sample_values
-
-                ]) > 0.5
-
-                if not (has_letters and has_numbers):
-                    continue
-
-                # =================================================
-                # TITANIC TICKET SUPPORT
-                # =================================================
-
-                text_number_pattern_ratio = np.mean([
-
-                    bool(
-                        re.search(
-                            r'[A-Za-z]',
-                            str(val)
-                        )
-                        and
-                        re.search(
-                            r'\d',
-                            str(val)
-                        )
-                    )
+                    bool(re.search(r'[A-Za-z]', str(val)))
+                    and
+                    bool(re.search(r'\d', str(val)))
 
                     for val in sample_values
 
                 ])
 
                 # =================================================
-                # TITANIC CABIN SUPPORT
-                # =================================================
-
-                cabin_pattern_ratio = np.mean([
-
-                    bool(
-                        re.match(
-                            r'^[A-Za-z]+\d+$',
-                            str(val).replace(" ", "")
-                        )
-                    )
-
-                    for val in sample_values
-
-                ])
-
-                # =================================================
-                # SAFE SPLIT CONDITION
-                # =================================================
-
-                should_split = (
-
-                    text_number_pattern_ratio >= 0.7
-                    or
-                    cabin_pattern_ratio >= 0.7
-
-                )
-
-                # =================================================
-                # AVOID DATE / TIME COLUMNS
+                # AVOID DATE COLUMNS
                 # =================================================
 
                 date_ratio = np.mean([
@@ -195,9 +125,22 @@ class DataPreprocessor:
                         )
                     )
 
+                    or
+
+                    bool(
+                        re.match(
+                            r'^[A-Za-z]+\s+\d{4}$',
+                            str(val)
+                        )
+                    )
+
                     for val in sample_values
 
                 ])
+
+                # =================================================
+                # AVOID TIME COLUMNS
+                # =================================================
 
                 time_ratio = np.mean([
 
@@ -213,16 +156,21 @@ class DataPreprocessor:
                 ])
 
                 # =================================================
-                # FINAL SAFE VALIDATION
+                # SKIP DATE/TIME COLUMNS
                 # =================================================
 
                 if (
-                    should_split
-                    and
-                    date_ratio < 0.5
-                    and
-                    time_ratio < 0.5
+                    date_ratio > 0.5
+                    or
+                    time_ratio > 0.5
                 ):
+                    continue
+
+                # =================================================
+                # SPLIT ONLY REAL MIXED COLUMNS
+                # =================================================
+
+                if mixed_ratio >= 0.6:
 
                     try:
 
@@ -244,16 +192,16 @@ class DataPreprocessor:
                             expand=False
                         )
 
+                        # =========================================
+                        # VALIDATION
+                        # =========================================
+
                         numeric_ratio = pd.to_numeric(
                             number_part,
                             errors='coerce'
                         ).notna().mean()
 
                         text_ratio = text_part.notna().mean()
-
-                        # =========================================
-                        # EXTRA SAFETY CHECK
-                        # =========================================
 
                         unique_text = text_part.nunique()
 
@@ -265,14 +213,18 @@ class DataPreprocessor:
                             .nunique()
                         )
 
+                        # =========================================
+                        # FINAL SAFE CHECK
+                        # =========================================
+
                         if (
                             numeric_ratio >= 0.6
                             and
                             text_ratio >= 0.6
                             and
-                            unique_numbers > 3
-                            and
                             unique_text > 1
+                            and
+                            unique_numbers > 3
                         ):
 
                             self.df[
