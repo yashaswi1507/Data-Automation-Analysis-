@@ -133,10 +133,6 @@ class DataPreprocessor:
 
                 # =================================================
                 # TITANIC TICKET SUPPORT
-                # Examples:
-                # PC 17599
-                # A/5 21171
-                # STON/O2. 3101282
                 # =================================================
 
                 text_number_pattern_ratio = np.mean([
@@ -159,10 +155,6 @@ class DataPreprocessor:
 
                 # =================================================
                 # TITANIC CABIN SUPPORT
-                # Examples:
-                # C85
-                # B28
-                # E101
                 # =================================================
 
                 cabin_pattern_ratio = np.mean([
@@ -190,7 +182,47 @@ class DataPreprocessor:
 
                 )
 
-                if should_split:
+                # =================================================
+                # AVOID DATE / TIME COLUMNS
+                # =================================================
+
+                date_ratio = np.mean([
+
+                    bool(
+                        re.match(
+                            r'^\d{1,4}[-/]\d{1,2}[-/]\d{1,4}$',
+                            str(val)
+                        )
+                    )
+
+                    for val in sample_values
+
+                ])
+
+                time_ratio = np.mean([
+
+                    bool(
+                        re.match(
+                            r'^\d{1,2}:\d{2}',
+                            str(val)
+                        )
+                    )
+
+                    for val in sample_values
+
+                ])
+
+                # =================================================
+                # FINAL SAFE VALIDATION
+                # =================================================
+
+                if (
+                    should_split
+                    and
+                    date_ratio < 0.5
+                    and
+                    time_ratio < 0.5
+                ):
 
                     try:
 
@@ -220,13 +252,27 @@ class DataPreprocessor:
                         text_ratio = text_part.notna().mean()
 
                         # =========================================
-                        # FINAL VALIDATION
+                        # EXTRA SAFETY CHECK
                         # =========================================
+
+                        unique_text = text_part.nunique()
+
+                        unique_numbers = (
+                            pd.to_numeric(
+                                number_part,
+                                errors='coerce'
+                            )
+                            .nunique()
+                        )
 
                         if (
                             numeric_ratio >= 0.6
                             and
                             text_ratio >= 0.6
+                            and
+                            unique_numbers > 3
+                            and
+                            unique_text > 1
                         ):
 
                             self.df[
