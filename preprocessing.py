@@ -74,7 +74,7 @@ class DataPreprocessor:
         )
 
         # =====================================================
-        # FEATURE ENGINEERING
+        # SAFE FEATURE ENGINEERING
         # =====================================================
 
         columns_to_drop = []
@@ -89,11 +89,6 @@ class DataPreprocessor:
                     .str.strip()
                 )
 
-                temp_col = temp_col.replace(
-                    ["nan", "None"],
-                    np.nan
-                )
-
                 sample_values = (
                     temp_col
                     .dropna()
@@ -105,133 +100,42 @@ class DataPreprocessor:
                     continue
 
                 # =================================================
-                # CHECK LETTERS + NUMBERS
+                # STRICT TEXT-NUMBER PATTERN
+                # Example:
+                # Product-101
+                # User_45
                 # =================================================
 
-                contains_letters = temp_col.str.contains(
-                    r'[A-Za-z]',
-                    regex=True,
-                    na=False
-                )
+                pattern_match_ratio = np.mean([
 
-                contains_numbers = temp_col.str.contains(
-                    r'\d',
-                    regex=True,
-                    na=False
-                )
-
-                has_letters = contains_letters.any()
-                has_numbers = contains_numbers.any()
-
-                # =================================================
-                # DETECT STRUCTURED MIXED FORMAT
-                # =================================================
-
-                separators = [
-                    "-",
-                    "_",
-                    "|",
-                    "/"
-                ]
-
-                found_separator = None
-
-                for sep in separators:
-
-                    matches = [
-
-                        sep in str(val)
-
-                        for val in sample_values
-                    ]
-
-                    if (
-                        sum(matches)
-                        >= len(sample_values) * 0.8
-                    ):
-
-                        found_separator = sep
-                        break
-
-                valid_split_pattern = False
-
-                if found_separator is not None:
-
-                    split_lengths = []
-
-                    for val in sample_values:
-
-                        parts = str(val).split(
-                            found_separator
+                    bool(
+                        re.match(
+                            r'^[A-Za-z]+[-_][0-9]+$',
+                            str(val)
                         )
-
-                        split_lengths.append(
-                            len(parts)
-                        )
-
-                    if len(set(split_lengths)) == 1:
-
-                        valid_split_pattern = True
-
-                # =================================================
-                # AVOID DATE/TIME COLUMNS
-                # =================================================
-
-                date_like_pattern = any(
-
-                    re.search(
-
-                        r'^\d{4}[-/]\d{1,2}[-/]\d{1,2}$',
-
-                        str(val)
                     )
 
                     for val in sample_values
-                )
 
-                time_like_pattern = any(
-
-                    re.search(
-
-                        r'^\d{1,2}:\d{2}',
-
-                        str(val)
-                    )
-
-                    for val in sample_values
-                )
+                ])
 
                 # =================================================
-                # SAFE SPLIT LOGIC
+                # SPLIT ONLY IF 90% VALUES MATCH
                 # =================================================
 
-                if (
-
-                    has_letters
-                    and
-                    has_numbers
-                    and
-                    valid_split_pattern
-                    and
-                    not date_like_pattern
-                    and
-                    not time_like_pattern
-
-                ):
+                if pattern_match_ratio >= 0.9:
 
                     try:
 
                         split_data = (
-
                             temp_col
                             .str.split(
-                                found_separator,
+                                r'[-_]',
                                 expand=True
                             )
-
                         )
 
-                        # ONLY SPLIT IF EXACTLY 2 PARTS
+                        # ONLY EXACT 2 PARTS
                         if split_data.shape[1] == 2:
 
                             left_part = (
@@ -246,28 +150,13 @@ class DataPreprocessor:
                                 .str.strip()
                             )
 
-                            # =========================================
-                            # VALIDATE:
-                            # LEFT = TEXT
-                            # RIGHT = NUMBER
-                            # =========================================
-
-                            left_has_text = left_part.str.contains(
-                                r'[A-Za-z]',
-                                regex=True,
-                                na=False
-                            ).mean()
-
-                            right_numeric = pd.to_numeric(
+                            # VALIDATE RIGHT SIDE NUMERIC
+                            numeric_ratio = pd.to_numeric(
                                 right_part,
                                 errors='coerce'
                             ).notna().mean()
 
-                            if (
-                                left_has_text > 0.7
-                                and
-                                right_numeric > 0.7
-                            ):
+                            if numeric_ratio >= 0.9:
 
                                 self.df[
                                     f"{col}_Type"
@@ -283,47 +172,14 @@ class DataPreprocessor:
                                 columns_to_drop.append(col)
 
                                 self.report.append(
-                                    f"✔ Split mixed column '{col}' into Type and Number"
+                                    f"✔ Split mixed column '{col}'"
                                 )
 
                     except:
                         pass
 
-                # =================================================
-                # MULTI WORD TEXT CLEANING
-                # =================================================
-
-                elif (
-                    temp_col
-                    .str.contains(" ", na=False)
-                    .mean() > 0.3
-                ):
-
-                    avg_words = (
-                        temp_col
-                        .dropna()
-                        .astype(str)
-                        .apply(
-                            lambda x: len(x.split())
-                        )
-                        .mean()
-                    )
-
-                    # only simplify very long text columns
-                    if avg_words > 4:
-
-                        self.df[col] = (
-                            temp_col
-                            .str.split()
-                            .str[0]
-                        )
-
-                        self.report.append(
-                            f"✔ Simplified text column '{col}'"
-                        )
-
         # =====================================================
-        # DROP ORIGINAL MIXED COLUMNS
+        # DROP ORIGINAL SPLIT COLUMNS
         # =====================================================
 
         if columns_to_drop:
@@ -348,6 +204,7 @@ class DataPreprocessor:
 
                 ratio = numeric_check.notna().mean()
 
+                # ONLY IF MOSTLY NUMERIC
                 if ratio > 0.8:
 
                     self.df[col] = numeric_check
@@ -566,3 +423,4 @@ class DataPreprocessor:
             )
 
         return self.df, self.report
+
