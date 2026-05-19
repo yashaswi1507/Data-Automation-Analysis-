@@ -304,7 +304,8 @@ def clean_missing_values(df):
             "none",
             "None",
             "NaN",
-            "nan"
+            "nan",
+            "-"
         ],
         pd.NA,
         inplace=True
