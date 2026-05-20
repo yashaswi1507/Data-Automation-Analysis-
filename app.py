@@ -1,7 +1,6 @@
 # =========================================================
 # IMPORTS
 # =========================================================
-
 import os
 import io
 import glob
@@ -11,7 +10,7 @@ import kagglehub
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-
+import openpyxl
 from bs4 import BeautifulSoup
 
 from eda import show_summary
@@ -180,7 +179,10 @@ def universal_data_loader(source):
 
         if ".xlsx" in source:
 
-            return pd.read_excel(source)
+            return pd.read_excel(
+                source,
+                engine="openpyxl"
+            )
 
     except:
         pass
@@ -236,6 +238,15 @@ def universal_data_loader(source):
                     with zip_file.open(file_name) as f:
 
                         return pd.read_csv(f)
+        
+        elif file_name.endswith(".xlsx"):
+
+            with zip_file.open(file_name) as f:
+
+                raw_df = pd.read_excel(
+                    f,
+                    engine="openpyxl"
+                )
 
     except:
         pass
@@ -335,12 +346,23 @@ if file is not None:
 
         try:
 
-            raw_df = pd.read_excel(file)
+            file.seek(0)
 
-        except:
+            raw_df = pd.read_excel(
+                file,
+                engine="openpyxl"
+            )
+
+            raw_df.columns = (
+                raw_df.columns
+                .astype(str)
+                .str.strip()
+            )
+
+        except Exception as e:
 
             st.error(
-                "Unable to read Excel file"
+                f"Excel Error: {e}"
             )
 
     # =====================================================
