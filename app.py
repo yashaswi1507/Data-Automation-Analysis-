@@ -1,6 +1,5 @@
-# =========================================================
 # IMPORTS
-# =========================================================
+
 import os
 import io
 import glob
@@ -31,9 +30,7 @@ from dashboard_generator import (
     generate_insights
 )
 
-# =========================================================
 # PAGE CONFIG
-# =========================================================
 
 st.set_page_config(
     page_title="Data Analysis Automation Tool",
@@ -46,9 +43,8 @@ st.markdown(
     "Upload data, clean it, visualize it, query it, and predict insights using AI-powered analytics."
 )
 
-# =========================================================
+
 # FILE UPLOAD
-# =========================================================
 
 file = st.file_uploader(
     "Upload Dataset",
@@ -64,15 +60,11 @@ dataset_url = st.text_input(
     "Or Paste Dataset URL / API / Kaggle Dataset"
 )
 
-# =========================================================
 # LOAD DATA
-# =========================================================
 
 raw_df = None
 
-# =========================================================
 # SAFE CSV LOADER
-# =========================================================
 
 def load_csv_safely(file):
 
@@ -598,25 +590,10 @@ if raw_df is not None:
                 if "id" not in col.lower()
             ]
 
-            if len(useful_numeric_cols) > 0:
-
-                avg_col = useful_numeric_cols[0]
-
-                avg_value = filtered_df[
-                    avg_col
-                ].mean()
-
-                c5.metric(
-                    f"Avg {avg_col}",
-                    f"{avg_value:,.2f}"
-                )
-
-            else:
-
-                c5.metric(
-                    "Numeric Columns",
-                    len(numeric_cols)
-                )
+            c5.metric(
+                "Numeric Columns",
+                len(numeric_cols)
+            )
 
         st.divider()
 
@@ -664,9 +641,7 @@ if raw_df is not None:
             mime="text/csv"
         )
 
-    # =====================================================
     # SUMMARY
-    # =====================================================
 
     with tab2:
 
@@ -681,9 +656,7 @@ if raw_df is not None:
             use_container_width=True
         )
 
-    # =====================================================
     # VISUALIZATION
-    # =====================================================
 
     with tab3:
 
@@ -726,9 +699,7 @@ if raw_df is not None:
             ]
         )
 
-        # =================================================
         # GROUP BY OPTION
-        # =================================================
 
         use_groupby = st.checkbox(
             "Use Group By"
@@ -755,9 +726,7 @@ if raw_df is not None:
                 ]
             )
 
-        # =================================================
         # BAR CHART
-        # =================================================
 
         if chart_type == "Bar Chart":
 
@@ -811,9 +780,7 @@ if raw_df is not None:
                     use_container_width=True
                 )
 
-        # =================================================
         # LINE CHART
-        # =================================================
 
         elif chart_type == "Line Chart":
 
@@ -859,9 +826,7 @@ if raw_df is not None:
                 use_container_width=True
             )
 
-        # =================================================
         # SCATTER PLOT
-        # =================================================
 
         elif chart_type == "Scatter Plot":
 
@@ -908,9 +873,7 @@ if raw_df is not None:
                 use_container_width=True
             )
 
-        # =================================================
         # HISTOGRAM
-        # =================================================
 
         elif chart_type == "Histogram":
 
