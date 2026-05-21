@@ -656,7 +656,7 @@ if raw_df is not None:
         )
 
         summary_df = filtered_df.describe(
-            include="numerical"
+            include=[float, int]
         ).fillna("-")
 
         st.dataframe(
