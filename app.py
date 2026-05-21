@@ -51,6 +51,7 @@ file = st.file_uploader(
     type=[
         "csv",
         "xlsx",
+        "xls",
         "json",
         "zip"
     ]
@@ -330,26 +331,31 @@ if file is not None:
 
         raw_df = load_csv_safely(file)
 
-    # =====================================================
     # EXCEL
-    # =====================================================
 
-    elif file.name.endswith(".xlsx"):
+    elif file.name.endswith(".xlsx") or file.name.endswith(".xls"):
 
         try:
 
             file.seek(0)
+            if file.name.endswith(".xlsx"):
 
-            raw_df = pd.read_excel(
-                file,
-                engine="openpyxl"
-            )
+                raw_df = pd.read_excel(
+                    file,
+                    engine="openpyxl"
+                )
 
-            raw_df.columns = (
-                raw_df.columns
-                .astype(str)
-                .str.strip()
-            )
+                raw_df.columns = (
+                    raw_df.columns
+                    .astype(str)
+                    .str.strip()
+                )
+            elif file.name.endswith(".xls"):
+
+                raw_df = pd.read_excel(
+                    file,
+                    engine="xlrd"
+                )
 
         except Exception as e:
 
@@ -896,9 +902,7 @@ if raw_df is not None:
                 use_container_width=True
             )
 
-        # =================================================
         # BOX PLOT
-        # =================================================
 
         elif chart_type == "Box Plot":
 
