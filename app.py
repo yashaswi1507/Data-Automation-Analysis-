@@ -655,10 +655,12 @@ if raw_df is not None:
             "Statistical Summary"
         )
 
+        summary_df = filtered_df.describe(
+            include="all"
+        ).fillna("-")
+
         st.dataframe(
-            filtered_df.describe(
-                include="all"
-            ),
+            summary_df,
             use_container_width=True
         )
 
