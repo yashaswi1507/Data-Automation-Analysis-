@@ -476,11 +476,40 @@ if raw_df is not None:
     # DATASET PROFILING
     # =====================================================
 
-    profiler = DatasetProfiler(df)
+    dataset_profile = "general"
+    column_profiles = {}
 
-    dataset_profile = profiler.detect_dataset_type()
+    try:
 
-    column_profiles = profiler.profile_columns()
+        profiler = DatasetProfiler(df)
+
+        # SAFE DETECT DATASET
+
+        if hasattr(profiler, "detect_dataset_type"):
+
+            dataset_profile = (
+                profiler.detect_dataset_type()
+            )
+
+        elif hasattr(profiler, "detect_dataset"):
+
+            dataset_profile = (
+                profiler.detect_dataset()
+            )
+
+        # SAFE COLUMN PROFILE
+
+        if hasattr(profiler, "profile_columns"):
+
+            column_profiles = (
+                profiler.profile_columns()
+            )
+
+    except Exception as e:
+
+        st.warning(
+            f"Profiler Disabled: {e}"
+        )
 
     # =====================================================
     # PREPROCESSING
