@@ -156,6 +156,22 @@ class DataPreprocessor:
         method = p["fill_method"]
         reason = p["fill_reason"]
 
+        # ── Manual Override ──────────────────────────────
+        # If user selected a specific method (not "Auto"),
+        # use it for numeric columns only.
+        # Non-numeric, date, skip-types still follow personality.
+        if self.missing_option not in ("Auto", "Drop Rows"):
+            if pd.api.types.is_numeric_dtype(self.df[col]) or self._detected_type(col) == "numeric":
+                override_map = {
+                    "Mean":   "mean",
+                    "Median": "median",
+                    "Mode":   "mode",
+                }
+                overridden = override_map.get(self.missing_option)
+                if overridden:
+                    method = overridden
+                    reason = f"manual override → {self.missing_option.lower()}"
+
         if method == "unknown":
             self.df[col] = self.df[col].fillna("Unknown")
             self.report.append(
