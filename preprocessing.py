@@ -22,7 +22,7 @@ class DataPreprocessor:
 
         self.dataset_profile = dataset_profile
 
-        self.column_profiles = column_profiles or {}
+        self.column_profiles = (column_profiles or {})
 
         self.report = []
 
@@ -396,4 +396,4 @@ class DataPreprocessor:
             "Data Cleaning Completed"
         )
 
-        return self.df, self.reports
+        return self.df, self.report
