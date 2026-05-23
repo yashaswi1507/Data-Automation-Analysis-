@@ -7,26 +7,26 @@ class DataPreprocessor:
 
     class DataPreprocessor:
 
-    def __init__(
-        self,
-        df,
-        outlier_option,
-        missing_option,
-        dataset_profile=None,
-        column_profiles=None
-    ):
+        def __init__(
+            self,
+            df,
+            outlier_option,
+            missing_option,
+            dataset_profile=None,
+            column_profiles=None
+        ):
 
-        self.df = df.copy()
+            self.df = df.copy()
 
-        self.outlier_option = outlier_option
+            self.outlier_option = outlier_option
 
-        self.missing_option = missing_option
+            self.missing_option = missing_option
 
-        self.dataset_profile = dataset_profile
+            self.dataset_profile = dataset_profile
 
-        self.column_profiles = (
-            column_profiles or {}
-        )
+            self.column_profiles = (
+                column_profiles or {}
+            )
 
     def process(self):
 
