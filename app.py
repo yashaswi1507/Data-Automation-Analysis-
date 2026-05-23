@@ -1,5 +1,5 @@
 # IMPORTS
-
+from dataset_profiler import DatasetProfiler
 import os
 import io
 import glob
@@ -471,6 +471,16 @@ if raw_df is not None:
             "Drop Rows"
         ]
     )
+    
+    # =====================================================
+    # DATASET PROFILING
+    # =====================================================
+
+    profiler = DatasetProfiler(df)
+
+    dataset_profile = profiler.detect_dataset_type()
+
+    column_profiles = profiler.profile_columns()
 
     # =====================================================
     # PREPROCESSING
@@ -479,9 +489,11 @@ if raw_df is not None:
     processor = DataPreprocessor(
         df,
         outlier_option,
-        missing_option
+        missing_option,
+        dataset_profile,
+        column_profiles
     )
-
+    
     clean_df, report = processor.process()
 
     # =====================================================
@@ -540,6 +552,9 @@ if raw_df is not None:
 
         st.subheader(
             "Dashboard Overview"
+        )
+        st.info(
+            f"Detected Dataset Type: {dataset_profile}"
         )
 
         numeric_cols = (
