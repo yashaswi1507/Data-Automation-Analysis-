@@ -7,41 +7,196 @@ class DataPreprocessor:
     """
     Universal cleaning pipeline.
     Works on ANY dataset — student, sales, HR, hospital, IoT, etc.
-    Never assumes column names. Every decision is based on actual data.
+    Every fill decision is based on the column's own data personality,
+    not on column names and not blindly on user's global choice.
     """
 
     def __init__(self, df, outlier_option, missing_option,
                  dataset_profile=None, column_profiles=None):
-        self.df             = df.copy()
-        self.outlier_option = outlier_option   # "No Action" | "Remove Outliers" | "Cap Outliers"
-        self.missing_option = missing_option   # "Mean" | "Median" | "Mode" | "Drop Rows"
-        self.dataset_profile  = dataset_profile
-        self.column_profiles  = column_profiles or {}
-        self.report = []
+        self.df              = df.copy()
+        self.outlier_option  = outlier_option   # "No Action" | "Remove Outliers" | "Cap Outliers"
+        self.missing_option  = missing_option   # user's sidebar choice — used as a hint, not law
+        self.dataset_profile = dataset_profile
+        self.column_profiles = column_profiles or {}
+        self.report          = []
 
     # ─────────────────────────────────────────────────────────────
-    # INTERNAL HELPERS
+    # HELPERS
     # ─────────────────────────────────────────────────────────────
 
     def _profile(self, col):
-        """Return the profiler's dict for this column (or empty dict)."""
         return self.column_profiles.get(col, {})
 
     def _detected_type(self, col):
         return self._profile(col).get("detected_type", "")
 
-    def _strategy(self, col):
-        return self._profile(col).get("cleaning_strategy", "")
+    # ─────────────────────────────────────────────────────────────
+    # COLUMN PERSONALITY ENGINE
+    # Decides the BEST fill strategy for any column purely from data.
+    # Column names are never read.
+    # ─────────────────────────────────────────────────────────────
+
+    def _personality(self, col):
+        """
+        Returns a dict describing this column's data personality:
+          fill_method : "unknown" | "mode" | "median" | "mean" | "ffill" | "drop"
+          fill_reason : human-readable explanation for the report
+        """
+        col_type = self._detected_type(col)
+        s        = self.df[col].dropna()
+
+        # ── Types that should be left as-is or marked Unknown ────
+        # Names, emails, phones, addresses, free text —
+        # filling these with a statistical value makes no sense.
+        if col_type in {"name", "email", "phone", "address", "text"}:
+            return {
+                "fill_method": "unknown",
+                "fill_reason": f"non-fillable type ({col_type}) → 'Unknown'"
+            }
+
+        # ── Date columns → forward fill (time continuity) ────────
+        if col_type == "date":
+            return {
+                "fill_method": "ffill",
+                "fill_reason": "date column → forward/back fill"
+            }
+
+        # ── Non-numeric (category / object) ──────────────────────
+        if not pd.api.types.is_numeric_dtype(self.df[col]):
+            n_unique     = s.nunique()
+            total_values = len(s)
+
+            # Binary or very low cardinality (2-4 unique values like gender, yes/no, blood group)
+            # Mode is risky — we don't know which value the missing rows should be.
+            # Mark as Unknown so we don't introduce false information.
+            if n_unique <= 4:
+                return {
+                    "fill_method": "unknown",
+                    "fill_reason": f"low-cardinality category ({n_unique} unique) → 'Unknown' (safer than mode)"
+                }
+
+            # Higher cardinality categories (country, department, product_type, etc.)
+            # Mode is reasonable — the most common value is a valid guess.
+            return {
+                "fill_method": "mode",
+                "fill_reason": f"categorical column ({n_unique} unique values) → mode"
+            }
+
+        # ── From here: column is numeric ─────────────────────────
+
+        if len(s) == 0:
+            return {"fill_method": "unknown", "fill_reason": "all values missing"}
+
+        n_unique     = s.nunique()
+        total_values = len(s)
+        skewness     = float(s.skew()) if total_values >= 3 else 0.0
+
+        # ── Discrete / count-like integers ───────────────────────
+        # Detected by: all values are whole numbers AND
+        # cardinality is low relative to dataset size.
+        # Examples: age (18-60 = ~42 unique), score (0-100),
+        #           num_children (0-5), years_exp (0-30)
+        # Mode is best — "most common age" is meaningful.
+        # Mean would give 34.7 years which makes no real sense.
+        is_integer_like = bool((s.dropna() == s.dropna().round()).all())
+        # Integers with bounded range (scores 0-100, age 0-120, rating 1-5, etc.)
+        # Key insight: if values are integers AND range is small relative to count,
+        # it's discrete even if unique count is high.
+        value_range   = float(s.max() - s.min()) if len(s) > 0 else 0
+        range_bounded = value_range <= 200          # covers age, score, rating, year
+        low_cardinality = n_unique <= max(100, total_values * 0.20)
+
+        if is_integer_like and (low_cardinality or range_bounded):
+            return {
+                "fill_method": "mode",
+                "fill_reason": f"discrete integer ({n_unique} unique values) → mode"
+            }
+
+        # ── Heavily skewed continuous (salary, price, revenue) ───
+        # Skew > 1 means outliers exist → median is safer than mean.
+        if abs(skewness) > 1.0:
+            return {
+                "fill_method": "median",
+                "fill_reason": f"skewed distribution (skew={skewness:.2f}) → median"
+            }
+
+        # ── Normally distributed continuous (height, weight, temp) ─
+        if abs(skewness) <= 1.0:
+            return {
+                "fill_method": "mean",
+                "fill_reason": f"normal distribution (skew={skewness:.2f}) → mean"
+            }
+
+        return {"fill_method": "median", "fill_reason": "fallback → median"}
 
     # ─────────────────────────────────────────────────────────────
-    # STEP 1 ─ STANDARDIZE RAW TEXT
-    # Strip whitespace, unify null-like strings → NaN
-    # Works on every dataset regardless of domain.
+    # FILL EXECUTOR
+    # Applies the personality decision to actually fill the column.
+    # ─────────────────────────────────────────────────────────────
+
+    def _fill_column(self, col, label_prefix="✔"):
+        """
+        Fills missing values in `col` according to its data personality.
+        `label_prefix` lets split sub-columns use a different indent.
+        """
+        missing = int(self.df[col].isnull().sum())
+        if missing == 0:
+            return
+
+        # If user chose "Drop Rows" — override everything
+        if self.missing_option == "Drop Rows":
+            before = len(self.df)
+            self.df.dropna(subset=[col], inplace=True)
+            self.report.append(
+                f"{label_prefix} '{col}' ({missing} missing) → dropped rows"
+            )
+            return
+
+        p      = self._personality(col)
+        method = p["fill_method"]
+        reason = p["fill_reason"]
+
+        if method == "unknown":
+            self.df[col] = self.df[col].fillna("Unknown")
+            self.report.append(
+                f"{label_prefix} '{col}' ({missing} missing) → 'Unknown'  [{reason}]"
+            )
+
+        elif method == "mode":
+            mode_vals = self.df[col].mode()
+            fill_val  = mode_vals[0] if len(mode_vals) > 0 else "Unknown"
+            self.df[col] = self.df[col].fillna(fill_val)
+            self.report.append(
+                f"{label_prefix} '{col}' ({missing} missing) → mode='{fill_val}'  [{reason}]"
+            )
+
+        elif method == "median":
+            fill_val = float(self.df[col].median())
+            self.df[col] = self.df[col].fillna(fill_val)
+            self.report.append(
+                f"{label_prefix} '{col}' ({missing} missing) → median={round(fill_val,4)}  [{reason}]"
+            )
+
+        elif method == "mean":
+            fill_val = float(self.df[col].mean())
+            self.df[col] = self.df[col].fillna(fill_val)
+            self.report.append(
+                f"{label_prefix} '{col}' ({missing} missing) → mean={round(fill_val,4)}  [{reason}]"
+            )
+
+        elif method == "ffill":
+            self.df[col] = self.df[col].ffill().bfill()
+            self.report.append(
+                f"{label_prefix} '{col}' ({missing} missing) → forward/back filled  [{reason}]"
+            )
+
+    # ─────────────────────────────────────────────────────────────
+    # STEP 1 — STANDARDIZE RAW TEXT
     # ─────────────────────────────────────────────────────────────
 
     NULL_STRINGS = {
-        "?", "", " ", "na", "n/a", "null", "none",
-        "nan", "--", "-", "nil", "missing", "unknown", "not available",
+        "?", "", " ", "na", "n/a", "null", "none", "nan",
+        "--", "-", "nil", "missing", "unknown", "not available",
         "#n/a", "#null!", "n.a.", "n.a", "nd", "not applicable",
     }
 
@@ -49,25 +204,21 @@ class DataPreprocessor:
         for col in self.df.select_dtypes(include="object").columns:
             self.df[col] = self.df[col].astype(str).str.strip()
 
-        # Case-insensitive null replacement
         def _nullify(val):
             if pd.isna(val):
                 return np.nan
-            s = str(val).strip().lower()
-            return np.nan if s in self.NULL_STRINGS else val
+            return np.nan if str(val).strip().lower() in self.NULL_STRINGS else val
 
         self.df = self.df.map(_nullify)
-        # Also catch purely whitespace cells
         self.df.replace(r'^\s*$', np.nan, regex=True, inplace=True)
 
     # ─────────────────────────────────────────────────────────────
-    # STEP 2 ─ SPLIT STRUCTURED CODE COLUMNS
-    # e.g. "ORD-001" → col_Type="ORD", col_Number=1
-    #      "EMP_042" → col_Type="EMP", col_Number=42
-    # Detected purely from the DATA, not the column name.
+    # STEP 2 — SPLIT STRUCTURED CODE COLUMNS
+    # Detected from data (separator pattern), never from column name.
+    # After split, each new column is filled by its own personality.
     # ─────────────────────────────────────────────────────────────
 
-    _SEP_RE  = re.compile(r"^([A-Za-z0-9]+)([-_/|\\])([A-Za-z0-9]+)$")
+    _SEP_RE = re.compile(r"^([A-Za-z0-9]+)([-_/|\\])([A-Za-z0-9]+)$")
 
     def _split_structured(self):
         to_drop = []
@@ -80,7 +231,6 @@ class DataPreprocessor:
             if not sample:
                 continue
 
-            # Find which separator is dominant in this column's data
             sep_counts = {}
             for v in sample:
                 m = self._SEP_RE.match(v)
@@ -92,19 +242,15 @@ class DataPreprocessor:
                 continue
 
             dominant_sep = max(sep_counts, key=sep_counts.get)
-            hit_rate = sep_counts[dominant_sep] / len(sample)
-
-            if hit_rate < 0.60:
+            if sep_counts[dominant_sep] / len(sample) < 0.60:
                 continue
 
             try:
                 split_data = (
                     self.df[col]
-                    .astype(str)
-                    .str.strip()
+                    .astype(str).str.strip()
                     .str.split(re.escape(dominant_sep), n=1, expand=True)
                 )
-
                 if split_data.shape[1] < 2:
                     continue
 
@@ -115,20 +261,27 @@ class DataPreprocessor:
                 left_num  = pd.to_numeric(left,  errors="coerce")
 
                 if right_num.notna().mean() > 0.60:
-                    # Normal: ALPHA-123
                     self.df[f"{col}_Type"]   = left
                     self.df[f"{col}_Number"] = right_num
+                    new_cols = [f"{col}_Type", f"{col}_Number"]
+
                 elif left_num.notna().mean() > 0.60:
-                    # Reverse: 123-ALPHA
                     self.df[f"{col}_Type"]   = right
                     self.df[f"{col}_Number"] = left_num
+                    new_cols = [f"{col}_Type", f"{col}_Number"]
+
                 else:
-                    # Both text: just split into Part1 / Part2
                     self.df[f"{col}_Part1"] = left
                     self.df[f"{col}_Part2"] = right
+                    new_cols = [f"{col}_Part1", f"{col}_Part2"]
+
+                self.report.append(f"✔ Split '{col}' → {new_cols}")
+
+                # Fill each new column by its own personality
+                for nc in new_cols:
+                    self._fill_column(nc, label_prefix="  ↳")
 
                 to_drop.append(col)
-                self.report.append(f"✔ Split '{col}' → 2 new columns")
 
             except Exception as e:
                 self.report.append(f"⚠ Could not split '{col}': {e}")
@@ -137,13 +290,9 @@ class DataPreprocessor:
             self.df.drop(columns=to_drop, inplace=True)
 
     # ─────────────────────────────────────────────────────────────
-    # STEP 3 ─ SAFE NUMERIC CONVERSION
-    # For columns that look numeric but are stored as strings.
-    # Never converts names, categories, addresses, emails, phones.
-    # Uses the actual data to decide — not the column name.
+    # STEP 3 — SAFE NUMERIC CONVERSION
     # ─────────────────────────────────────────────────────────────
 
-    # Types that must NEVER be force-converted to numeric
     _SKIP_CONVERT = {"name", "category", "text", "address",
                      "email", "phone", "date", "structured_code"}
 
@@ -153,108 +302,37 @@ class DataPreprocessor:
                 continue
             if pd.api.types.is_numeric_dtype(self.df[col]):
                 continue
-
             try:
-                # Remove currency/thousand separators before trying
-                cleaned = (
-                    self.df[col]
-                    .astype(str)
-                    .str.replace(r"[,\$€£₹%\s]", "", regex=True)
-                )
+                cleaned   = self.df[col].astype(str).str.replace(r"[,\$€£₹%\s]", "", regex=True)
                 converted = pd.to_numeric(cleaned, errors="coerce")
-                # Only convert if 90%+ values are valid numbers
                 if converted.notna().mean() >= 0.90:
                     self.df[col] = converted
             except Exception:
                 pass
 
     # ─────────────────────────────────────────────────────────────
-    # STEP 4 ─ HANDLE MISSING VALUES  (type-aware, data-driven)
-    #
-    # Decision tree per column:
-    #   skip types       → leave as-is (names, emails, phones, addresses, text)
-    #   numeric          → mean / median / mode (user's choice)
-    #   category         → mode fill (most frequent value)
-    #   date             → forward-fill → backward-fill
-    #   structured parts → fill numeric part with median, text part with mode
-    #   Drop Rows        → global option, applied before any fill
+    # STEP 4 — HANDLE MISSING VALUES
+    # Each column filled by its own personality — not a global rule.
     # ─────────────────────────────────────────────────────────────
-
-    _SKIP_FILL = {"name", "text", "address", "email", "phone"}
 
     def _handle_missing(self):
         for col in self.df.columns:
-            missing = int(self.df[col].isnull().sum())
-            if missing == 0:
+            if self.df[col].isnull().sum() == 0:
                 continue
-
-            col_type = self._detected_type(col)
-
-            # Never touch these
-            if col_type in self._SKIP_FILL:
-                continue
-
-            # ── Drop Rows (global user preference) ──────
-            if self.missing_option == "Drop Rows":
-                before = len(self.df)
-                self.df.dropna(subset=[col], inplace=True)
-                dropped = before - len(self.df)
-                self.report.append(f"✔ Dropped {dropped} rows with missing '{col}'")
-                continue
-
-            # ── Numeric column ───────────────────────────
-            if pd.api.types.is_numeric_dtype(self.df[col]) or col_type == "numeric":
-                fill_val = self._numeric_fill(col)
-                self.df[col] = self.df[col].fillna(fill_val)
-                self.report.append(
-                    f"✔ '{col}' ({missing} missing) → filled with "
-                    f"{self.missing_option.lower()} = {round(float(fill_val), 4)}"
-                )
-
-            # ── Date column ──────────────────────────────
-            elif col_type == "date":
-                self.df[col] = (
-                    self.df[col]
-                    .fillna(method="ffill")
-                    .fillna(method="bfill")
-                )
-                self.report.append(f"✔ '{col}' ({missing} missing) → forward/back filled (date)")
-
-            # ── Category or anything else fillable ───────
-            else:
-                mode_vals = self.df[col].mode()
-                fill_val  = mode_vals[0] if len(mode_vals) > 0 else "Unknown"
-                self.df[col] = self.df[col].fillna(fill_val)
-                self.report.append(
-                    f"✔ '{col}' ({missing} missing) → filled with mode = '{fill_val}'"
-                )
-
-    def _numeric_fill(self, col):
-        """Return the fill value based on user's missing_option."""
-        s = self.df[col]
-        if self.missing_option == "Mean":
-            return s.mean()
-        elif self.missing_option == "Mode":
-            m = s.mode()
-            return m[0] if len(m) > 0 else s.median()
-        else:  # Median (default)
-            return s.median()
+            self._fill_column(col)
 
     # ─────────────────────────────────────────────────────────────
-    # STEP 5 ─ REMOVE DUPLICATES
+    # STEP 5 — REMOVE DUPLICATES
     # ─────────────────────────────────────────────────────────────
 
     def _remove_duplicates(self):
-        before = len(self.df)
+        before  = len(self.df)
         self.df.drop_duplicates(inplace=True)
         removed = before - len(self.df)
         self.report.append(f"✔ Removed {removed} duplicate row(s)")
 
     # ─────────────────────────────────────────────────────────────
-    # STEP 6 ─ HANDLE OUTLIERS
-    # Only on truly numeric columns.
-    # Skips IDs, codes, dates, categories.
-    # Uses IQR method — works for any distribution.
+    # STEP 6 — HANDLE OUTLIERS (numeric only, personality-aware)
     # ─────────────────────────────────────────────────────────────
 
     _SKIP_OUTLIER = {"identifier", "structured_code", "date",
@@ -267,46 +345,37 @@ class DataPreprocessor:
         for col in self.df.select_dtypes(include="number").columns:
             if self._detected_type(col) in self._SKIP_OUTLIER:
                 continue
-
             try:
                 Q1    = self.df[col].quantile(0.25)
                 Q3    = self.df[col].quantile(0.75)
                 IQR   = Q3 - Q1
                 if IQR == 0:
-                    continue   # constant column — skip
+                    continue
                 lower = Q1 - 1.5 * IQR
                 upper = Q3 + 1.5 * IQR
-
                 n_out = int(((self.df[col] < lower) | (self.df[col] > upper)).sum())
 
                 if self.outlier_option == "Remove Outliers":
-                    self.df = self.df[
-                        (self.df[col] >= lower) & (self.df[col] <= upper)
-                    ]
-                    self.report.append(
-                        f"✔ '{col}' → removed {n_out} outlier row(s)"
-                    )
+                    self.df = self.df[(self.df[col] >= lower) & (self.df[col] <= upper)]
+                    self.report.append(f"✔ '{col}' → removed {n_out} outlier row(s)")
+
                 elif self.outlier_option == "Cap Outliers":
                     self.df[col] = self.df[col].clip(lower, upper)
                     self.report.append(
-                        f"✔ '{col}' → capped {n_out} outlier(s) "
-                        f"[{round(lower,2)}, {round(upper,2)}]"
+                        f"✔ '{col}' → capped {n_out} outlier(s) [{round(lower,2)}, {round(upper,2)}]"
                     )
-
             except Exception as e:
                 self.report.append(f"⚠ Outlier skipped for '{col}': {e}")
 
     # ─────────────────────────────────────────────────────────────
-    # MAIN ENTRY POINT
+    # MAIN
     # ─────────────────────────────────────────────────────────────
 
     def process(self):
         missing_before = int(self.df.isnull().sum().sum())
-        rows_before    = len(self.df)
-
-        self.report.append(f"📋 Rows: {rows_before}  |  Columns: {self.df.shape[1]}")
-        self.report.append(f"📋 Missing values before: {missing_before}")
-        self.report.append("─" * 45)
+        self.report.append(f"📋 Rows: {len(self.df)}  |  Columns: {self.df.shape[1]}")
+        self.report.append(f"📋 Missing before: {missing_before}")
+        self.report.append("─" * 50)
 
         self._standardize()
         self._split_structured()
@@ -316,8 +385,7 @@ class DataPreprocessor:
         self._handle_outliers()
 
         missing_after = int(self.df.isnull().sum().sum())
-        self.report.append("─" * 45)
+        self.report.append("─" * 50)
         self.report.append(f"✅ Done  |  Rows: {len(self.df)}  |  Columns: {self.df.shape[1]}")
-        self.report.append(f"✅ Missing values after: {missing_after}")
-
+        self.report.append(f"✅ Missing after: {missing_after}")
         return self.df, self.report
