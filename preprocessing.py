@@ -5,32 +5,30 @@ import re
 
 class DataPreprocessor:
 
-        def __init__(
-            self,
-            df,
-            outlier_option,
-            missing_option,
-            dataset_profile=None,
-            column_profiles=None
-        ):
+    def __init__(
+        self,
+        df,
+        outlier_option,
+        missing_option,
+        dataset_profile=None,
+        column_profiles=None
+    ):
 
-            self.df = df.copy()
+        self.df = df.copy()
 
-            self.outlier_option = outlier_option
+        self.outlier_option = outlier_option
 
-            self.missing_option = missing_option
+        self.missing_option = missing_option
 
-            self.dataset_profile = dataset_profile
+        self.dataset_profile = dataset_profile
 
-            self.column_profiles = (
-                column_profiles or {}
-            )
+        self.column_profiles = column_profiles or {}
+
+        self.report = []
 
     def process(self):
 
-        # =====================================================
         # CLEAN OBJECT COLUMNS
-        # =====================================================
 
         for col in self.df.select_dtypes(include='object').columns:
 
@@ -40,9 +38,7 @@ class DataPreprocessor:
                 .str.strip()
             )
 
-        # =====================================================
         # CONVERT WEIRD VALUES TO NaN
-        # =====================================================
 
         self.df.replace(
             [
@@ -70,21 +66,15 @@ class DataPreprocessor:
             inplace=True
         )
 
-        # =====================================================
-        # SAVE ORIGINAL MISSING VALUES
-        # =====================================================
-
         self.original_null_counts = self.df.isnull().sum()
 
         self.total_missing_before = (
             self.original_null_counts.sum()
         )
 
-        # =====================================================
-        # FEATURE ENGINEERING FIRST
-        # =====================================================
-
         columns_to_drop = []
+
+        # FEATURE ENGINEERING
 
         for col in self.df.columns:
 
@@ -95,10 +85,6 @@ class DataPreprocessor:
                     .astype(str)
                     .str.strip()
                 )
-
-                # =================================================
-                # IGNORE FAKE NAN STRINGS
-                # =================================================
 
                 temp_col = temp_col.replace(
                     ["nan", "None"],
@@ -130,10 +116,6 @@ class DataPreprocessor:
                 has_letters = contains_letters.any()
                 has_numbers = contains_numbers.any()
 
-                # =================================================
-                # SMART MIXED COLUMN DETECTION
-                # =================================================
-
                 separators = [
                     "-",
                     "_",
@@ -146,9 +128,7 @@ class DataPreprocessor:
                 for sep in separators:
 
                     matches = [
-
                         sep in str(val)
-
                         for val in sample_values
                     ]
 
@@ -160,10 +140,6 @@ class DataPreprocessor:
                         found_separator = sep
                         break
 
-                # =================================================
-                # VALID STRUCTURED MIXED DATA
-                # =================================================
-
                 valid_split_pattern = False
 
                 if found_separator is not None:
@@ -172,9 +148,7 @@ class DataPreprocessor:
 
                     for val in sample_values:
 
-                        parts = str(val).split(
-                            found_separator
-                        )
+                        parts = str(val).split(found_separator)
 
                         split_lengths.append(
                             len(parts)
@@ -184,16 +158,10 @@ class DataPreprocessor:
 
                         valid_split_pattern = True
 
-                # =================================================
-                # AVOID DATE / TIME LIKE COLUMNS
-                # =================================================
-
                 date_like_pattern = any(
 
                     re.search(
-
                         r'^\d{4}[-/]\d{1,2}[-/]\d{1,2}$',
-
                         str(val)
                     )
 
@@ -203,18 +171,12 @@ class DataPreprocessor:
                 time_like_pattern = any(
 
                     re.search(
-
                         r'^\d{1,2}:\d{2}',
-
                         str(val)
                     )
 
                     for val in sample_values
                 )
-
-                # =================================================
-                # HANDLE MIXED COLUMNS SAFELY
-                # =================================================
 
                 if (
 
@@ -242,43 +204,30 @@ class DataPreprocessor:
 
                         )
 
-                        # only split 2-part structures
                         if split_data.shape[1] == 2:
-
-                            # ================= TYPE COLUMN =================
 
                             self.df[
                                 f"{col}_Type"
                             ] = (
-
                                 split_data[0]
                                 .str.strip()
-
                             )
-
-                            # ================= NUMBER COLUMN =================
 
                             self.df[
                                 f"{col}_Number"
                             ] = pd.to_numeric(
-
                                 split_data[1],
-
                                 errors='coerce'
                             )
 
                             columns_to_drop.append(col)
 
                             self.report.append(
-                                f"✔ Split mixed column '{col}' into Type and Number"
+                                f"✔ Split mixed column '{col}'"
                             )
 
                     except:
                         pass
-
-                # =================================================
-                # HANDLE MULTI VALUE TEXT
-                # =================================================
 
                 elif (
                     temp_col
@@ -293,12 +242,10 @@ class DataPreprocessor:
                     )
 
                     self.report.append(
-                        f"✔ Simplified multi-value column '{col}'"
+                        f"✔ Simplified '{col}'"
                     )
 
-        # =====================================================
-        # DROP ORIGINAL MIXED COLUMNS
-        # =====================================================
+        # DROP MIXED COLUMNS
 
         if columns_to_drop:
 
@@ -307,9 +254,7 @@ class DataPreprocessor:
                 inplace=True
             )
 
-        # =====================================================
         # CONVERT MOSTLY NUMERIC COLUMNS
-        # =====================================================
 
         for col in self.df.columns:
 
@@ -322,7 +267,6 @@ class DataPreprocessor:
 
                 ratio = numeric_check.notna().mean()
 
-                # Convert only if mostly numeric
                 if ratio > 0.8:
 
                     self.df[col] = numeric_check
@@ -330,9 +274,7 @@ class DataPreprocessor:
             except:
                 pass
 
-        # =====================================================
-        # BEFORE CLEANING REPORT
-        # =====================================================
+        # REPORT
 
         total_rows = len(self.df)
 
@@ -347,30 +289,16 @@ class DataPreprocessor:
         )
 
         self.report.append(
-            f"Total Missing Values Before Cleaning: {self.total_missing_before}"
+            f"Missing Values Before Cleaning: {self.total_missing_before}"
         )
 
-        for col in self.original_null_counts.index:
-
-            if self.original_null_counts[col] > 0:
-
-                self.report.append(
-                    f"Missing in '{col}': {self.original_null_counts[col]}"
-                )
-
-        # =====================================================
         # HANDLE MISSING VALUES
-        # =====================================================
 
         for col in self.df.columns:
 
             missing = self.df[col].isnull().sum()
 
             if missing > 0:
-
-                # =================================================
-                # NUMERIC
-                # =================================================
 
                 if pd.api.types.is_numeric_dtype(
                     self.df[col]
@@ -379,32 +307,23 @@ class DataPreprocessor:
                     if self.missing_option == "Mean":
 
                         fill_value = self.df[col].mean()
-                        method_used = "Mean"
 
                     elif self.missing_option == "Median":
 
                         fill_value = self.df[col].median()
-                        method_used = "Median"
 
                     elif self.missing_option == "Mode":
 
                         fill_value = self.df[col].mode()[0]
-                        method_used = "Mode"
 
                     elif self.missing_option == "Drop Rows":
 
                         self.df.dropna(inplace=True)
-                        method_used = "Drop Rows"
+                        continue
 
-                    if self.missing_option != "Drop Rows":
-
-                        self.df[col] = self.df[col].fillna(
-                            fill_value
-                        )
-
-                # =================================================
-                # CATEGORICAL
-                # =================================================
+                    self.df[col] = self.df[col].fillna(
+                        fill_value
+                    )
 
                 else:
 
@@ -422,15 +341,11 @@ class DataPreprocessor:
                             "Unknown"
                         )
 
-                    method_used = "Mode"
-
                 self.report.append(
-                    f"✔ Handled missing values in '{col}' using {method_used}"
+                    f"✔ Cleaned missing values in '{col}'"
                 )
 
-        # =====================================================
         # REMOVE DUPLICATES
-        # =====================================================
 
         before_duplicates = len(self.df)
 
@@ -444,11 +359,7 @@ class DataPreprocessor:
             f"Removed duplicate rows: {removed_duplicates}"
         )
 
-        # =====================================================
-        # OUTLIER HANDLING
-        # =====================================================
-
-        outlier_count = 0
+        # OUTLIERS
 
         numeric_cols = self.df.select_dtypes(
             include='number'
@@ -466,79 +377,23 @@ class DataPreprocessor:
 
             upper = Q3 + 1.5 * IQR
 
-            outliers = (
+            if self.outlier_option == "Remove Outliers":
 
-                (
-                    (self.df[col] < lower)
-                    |
-                    (self.df[col] > upper)
+                self.df = self.df[
+                    (self.df[col] >= lower)
+                    &
+                    (self.df[col] <= upper)
+                ]
 
-                ).sum()
+            elif self.outlier_option == "Cap Outliers":
 
-            )
-
-            if outliers > 0:
-
-                outlier_count += outliers
-
-                self.report.append(
-                    f"Outliers in '{col}': {outliers}"
+                self.df[col] = self.df[col].clip(
+                    lower,
+                    upper
                 )
-
-                # =================================================
-                # REMOVE OUTLIERS
-                # =================================================
-
-                if (
-                    self.outlier_option
-                    == "Remove Outliers"
-                ):
-
-                    self.df = self.df[
-
-                        (self.df[col] >= lower)
-
-                        &
-
-                        (self.df[col] <= upper)
-
-                    ]
-
-                    self.report.append(
-                        f"Removed outliers from '{col}'"
-                    )
-
-                # =================================================
-                # CAP OUTLIERS
-                # =================================================
-
-                elif (
-                    self.outlier_option
-                    == "Cap Outliers"
-                ):
-
-                    self.df[col] = self.df[col].clip(
-                        lower,
-                        upper
-                    )
-
-                    self.report.append(
-                        f"Capped outliers in '{col}'"
-                    )
-
-        # =====================================================
-        # FINAL REPORT
-        # =====================================================
 
         self.report.append(
             "Data Cleaning Completed"
         )
 
-        if outlier_count == 0:
-
-            self.report.append(
-                "No significant outliers detected"
-            )
-
-        return self.df, self.report
-
+        return self.df, self.reports
