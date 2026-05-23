@@ -179,10 +179,10 @@ if raw_df is not None:
             "Fill Method",
             ["Median", "Mean", "Mode", "Drop Rows"],
         )
-        st.sidebar.info("⚙️ Manual override active — numeric columns will use your chosen method.")
+        st.sidebar.info("Manual override active — numeric columns will use your chosen method.")
     else:
         missing_option = "Auto"
-        st.sidebar.success("✅ Auto mode — each column filled by its data personality.")
+        st.sidebar.success("Auto mode — each column filled by its data personality.")
 
     st.sidebar.divider()
 
@@ -226,8 +226,8 @@ if raw_df is not None:
     # =====================================================
 
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "📊 Dashboard", "📋 Summary", "📈 Visualization Studio",
-        "🔍 Query Engine", "🤖 ML Prediction", "⚡ Auto Dashboard"
+        "Dashboard", "Summary", "Visualization Studio",
+        "Query Engine", "ML Prediction", "Auto Dashboard"
     ])
 
     # =====================================================
@@ -271,7 +271,7 @@ if raw_df is not None:
         st.divider()
 
         # ── Cleaning Report — improved UI ────────────────
-        st.subheader("🧹 Cleaning Report")
+        st.subheader("Cleaning Report")
 
         # Categorise report lines
         info_lines   = [r for r in report if r.startswith("📋")]
@@ -293,12 +293,12 @@ if raw_df is not None:
 
         st.divider()
 
-        with st.expander("📝 Dataset Info", expanded=False):
+        with st.expander("Dataset Info", expanded=False):
             for r in info_lines:
                 st.write(r)
 
         if split_lines:
-            with st.expander(f"✂️ Structured Columns Split ({len(split_lines)})", expanded=True):
+            with st.expander(f"Structured Columns Split ({len(split_lines)})", expanded=True):
                 for r in split_lines + [l for l in fill_lines if "↳" in l]:
                     if "↳" in r:
                         st.caption(r)
@@ -307,7 +307,7 @@ if raw_df is not None:
 
         non_arrow_fills = [l for l in fill_lines if "↳" not in l]
         if non_arrow_fills:
-            with st.expander(f"🔧 Missing Values Filled ({len(non_arrow_fills)})", expanded=True):
+            with st.expander(f"Missing Values Filled ({len(non_arrow_fills)})", expanded=True):
                 for r in non_arrow_fills:
                     # Colour by method used
                     if "Unknown" in r:
@@ -320,12 +320,12 @@ if raw_df is not None:
                         st.success(r)
 
         if dup_lines:
-            with st.expander("🗑️ Duplicates", expanded=False):
+            with st.expander("Duplicates", expanded=False):
                 for r in dup_lines:
                     st.success(r)
 
         if outlier_lines:
-            with st.expander(f"📉 Outlier Handling ({len(outlier_lines)})", expanded=False):
+            with st.expander(f"Outlier Handling ({len(outlier_lines)})", expanded=False):
                 for r in outlier_lines:
                     st.info(r)
 
@@ -341,7 +341,7 @@ if raw_df is not None:
         st.dataframe(clean_df.head(rows_to_show), use_container_width=True)
 
         st.download_button(
-            label="⬇️ Download Cleaned CSV",
+            label="Download Cleaned CSV",
             data=clean_df.to_csv(index=False).encode("utf-8"),
             file_name="cleaned_data.csv",
             mime="text/csv"
@@ -486,7 +486,7 @@ if raw_df is not None:
             if st.button("Train Model"):
                 model, score = train_prediction_model(filtered_df, target)
                 if model:
-                    st.success(f"✅ Model Trained | R² Score: {score:.2f}")
+                    st.success(f"Model Trained | R² Score: {score:.2f}")
 
                     st.subheader("Make a Prediction")
                     input_data = {}
@@ -497,7 +497,7 @@ if raw_df is not None:
                     if st.button("Predict"):
                         input_df   = pd.DataFrame([input_data])
                         prediction = model.predict(input_df)
-                        st.success(f"🎯 Predicted {target}: {prediction[0]:.2f}")
+                        st.success(f"Predicted {target}: {prediction[0]:.2f}")
                 else:
                     st.error("Model training failed. Check your data.")
         else:
@@ -508,7 +508,7 @@ if raw_df is not None:
     # =====================================================
 
     with tab6:
-        st.subheader("⚡ AI Auto Dashboard")
+        st.subheader("AI Auto Dashboard")
 
         # KPIs
         metrics     = generate_kpis(filtered_df)

@@ -310,7 +310,7 @@ class DataPreprocessor:
                     self.df[f"{col}_Part2"] = right
                     new_cols = [f"{col}_Part1", f"{col}_Part2"]
 
-                self.report.append(f"✔ Split '{col}' → {new_cols}")
+                self.report.append(f"Split '{col}' → {new_cols}")
 
                 # Fill each new column by its own personality
                 for nc in new_cols:
@@ -319,7 +319,7 @@ class DataPreprocessor:
                 to_drop.append(col)
 
             except Exception as e:
-                self.report.append(f"⚠ Could not split '{col}': {e}")
+                self.report.append(f"Could not split '{col}': {e}")
 
         if to_drop:
             self.df.drop(columns=to_drop, inplace=True)
@@ -364,7 +364,7 @@ class DataPreprocessor:
         before  = len(self.df)
         self.df.drop_duplicates(inplace=True)
         removed = before - len(self.df)
-        self.report.append(f"✔ Removed {removed} duplicate row(s)")
+        self.report.append(f"Removed {removed} duplicate row(s)")
 
     # ─────────────────────────────────────────────────────────────
     # STEP 6 — HANDLE OUTLIERS (numeric only, personality-aware)
@@ -392,15 +392,15 @@ class DataPreprocessor:
 
                 if self.outlier_option == "Remove Outliers":
                     self.df = self.df[(self.df[col] >= lower) & (self.df[col] <= upper)]
-                    self.report.append(f"✔ '{col}' → removed {n_out} outlier row(s)")
+                    self.report.append(f"'{col}' → removed {n_out} outlier row(s)")
 
                 elif self.outlier_option == "Cap Outliers":
                     self.df[col] = self.df[col].clip(lower, upper)
                     self.report.append(
-                        f"✔ '{col}' → capped {n_out} outlier(s) [{round(lower,2)}, {round(upper,2)}]"
+                        f"'{col}' → capped {n_out} outlier(s) [{round(lower,2)}, {round(upper,2)}]"
                     )
             except Exception as e:
-                self.report.append(f"⚠ Outlier skipped for '{col}': {e}")
+                self.report.append(f"Outlier skipped for '{col}': {e}")
 
     # ─────────────────────────────────────────────────────────────
     # MAIN
@@ -408,8 +408,8 @@ class DataPreprocessor:
 
     def process(self):
         missing_before = int(self.df.isnull().sum().sum())
-        self.report.append(f"📋 Rows: {len(self.df)}  |  Columns: {self.df.shape[1]}")
-        self.report.append(f"📋 Missing before: {missing_before}")
+        self.report.append(f"Rows: {len(self.df)}  |  Columns: {self.df.shape[1]}")
+        self.report.append(f"Missing before: {missing_before}")
         self.report.append("─" * 50)
 
         self._standardize()
@@ -421,6 +421,6 @@ class DataPreprocessor:
 
         missing_after = int(self.df.isnull().sum().sum())
         self.report.append("─" * 50)
-        self.report.append(f"✅ Done  |  Rows: {len(self.df)}  |  Columns: {self.df.shape[1]}")
-        self.report.append(f"✅ Missing after: {missing_after}")
+        self.report.append(f"Done  |  Rows: {len(self.df)}  |  Columns: {self.df.shape[1]}")
+        self.report.append(f"Missing after: {missing_after}")
         return self.df, self.report
