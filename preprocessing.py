@@ -90,30 +90,52 @@ class DataPreprocessor:
         n_unique     = s.nunique()
         total_values = len(s)
         skewness     = float(s.skew()) if total_values >= 3 else 0.0
+        value_range  = float(s.max() - s.min()) if total_values > 0 else 0.0
 
-        # ── Discrete / count-like integers ───────────────────────
-        # Detected by: all values are whole numbers AND
-        # cardinality is low relative to dataset size.
-        # Examples: age (18-60 = ~42 unique), score (0-100),
-        #           num_children (0-5), years_exp (0-30)
-        # Mode is best — "most common age" is meaningful.
-        # Mean would give 34.7 years which makes no real sense.
-        is_integer_like = bool((s.dropna() == s.dropna().round()).all())
-        # Integers with bounded range (scores 0-100, age 0-120, rating 1-5, etc.)
-        # Key insight: if values are integers AND range is small relative to count,
-        # it's discrete even if unique count is high.
-        value_range   = float(s.max() - s.min()) if len(s) > 0 else 0
-        range_bounded = value_range <= 200          # covers age, score, rating, year
-        low_cardinality = n_unique <= max(100, total_values * 0.20)
+        # ── Is this column "discrete-like"? ──────────────────────
+        # We don't rely on dtype (float64 vs int64) because missing values
+        # force pandas to store integers as float64 (e.g. age 22.0, 35.0).
+        # Instead, measure THREE things from the data itself:
+        #
+        #   1. granularity  — what fraction of values are whole numbers?
+        #                     age: 22.0, 35.0 → ~98% whole → high
+        #                     height: 165.3, 172.8 → ~5% whole → low
+        #
+        #   2. density      — unique values relative to the range they cover
+        #                     age 18-80: 88 unique over range 62 → 1.4 per unit → dense
+        #                     salary 30k-500k: 400 unique over 470k range → 0.0008 → sparse
+        #
+        #   3. range bound  — is the value range small enough to be a human scale?
+        #                     age/score/year/rating → bounded (range < 200)
+        #                     salary/price/revenue → unbounded (range >> 200)
+        #
+        # A column is "discrete-like" when granularity is high AND
+        # (density is high OR range is bounded).
+        # This catches: age, score, rating, year, num_children, experience_years
+        # even when stored as float64 with decimals like 0.92 (infant age).
 
-        if is_integer_like and (low_cardinality or range_bounded):
+        whole_number_frac = (s == s.round()).mean()   # 0.0 to 1.0
+        granularity_high  = whole_number_frac >= 0.80 # 80%+ values are whole numbers
+
+        density           = n_unique / value_range if value_range > 0 else 0
+        density_high      = density >= 0.30           # at least 1 unique per ~3 units
+
+        range_bounded     = value_range <= 300        # covers age(120), score(100),
+                                                      # year(current-1900~125), rating(5)
+
+        is_discrete = granularity_high and (density_high or range_bounded)
+
+        if is_discrete:
             return {
                 "fill_method": "mode",
-                "fill_reason": f"discrete integer ({n_unique} unique values) → mode"
+                "fill_reason": (
+                    f"discrete numeric — {whole_number_frac*100:.0f}% whole numbers, "
+                    f"range={value_range:.0f}, density={density:.2f} → mode"
+                )
             }
 
         # ── Heavily skewed continuous (salary, price, revenue) ───
-        # Skew > 1 means outliers exist → median is safer than mean.
+        # Skew > 1.0 means a long tail / outliers → median is safer than mean.
         if abs(skewness) > 1.0:
             return {
                 "fill_method": "median",
@@ -121,13 +143,10 @@ class DataPreprocessor:
             }
 
         # ── Normally distributed continuous (height, weight, temp) ─
-        if abs(skewness) <= 1.0:
-            return {
-                "fill_method": "mean",
-                "fill_reason": f"normal distribution (skew={skewness:.2f}) → mean"
-            }
-
-        return {"fill_method": "median", "fill_reason": "fallback → median"}
+        return {
+            "fill_method": "mean",
+            "fill_reason": f"continuous symmetric (skew={skewness:.2f}) → mean"
+        }
 
     # ─────────────────────────────────────────────────────────────
     # FILL EXECUTOR
