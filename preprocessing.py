@@ -5,8 +5,6 @@ import re
 
 class DataPreprocessor:
 
-    class DataPreprocessor:
-
         def __init__(
             self,
             df,
