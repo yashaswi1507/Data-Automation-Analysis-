@@ -5,18 +5,28 @@ import re
 
 class DataPreprocessor:
 
+    class DataPreprocessor:
+
     def __init__(
         self,
         df,
-        outlier_option="No Action",
-        missing_option="Median"
+        outlier_option,
+        missing_option,
+        dataset_profile=None,
+        column_profiles=None
     ):
 
         self.df = df.copy()
-        self.report = []
 
         self.outlier_option = outlier_option
+
         self.missing_option = missing_option
+
+        self.dataset_profile = dataset_profile
+
+        self.column_profiles = (
+            column_profiles or {}
+        )
 
     def process(self):
 
