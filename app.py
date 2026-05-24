@@ -227,7 +227,7 @@ if raw_df is not None:
 
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "Dashboard", "Summary", "Visualization Studio",
-        "Query Engine", "ML Prediction", "⚡ Auto Dashboard"
+        "Query Engine", "ML Prediction", "Auto Dashboard"
     ])
 
     # =====================================================
@@ -271,7 +271,7 @@ if raw_df is not None:
         st.divider()
 
         # ── Cleaning Report — improved UI ────────────────
-        st.subheader("🧹 Cleaning Report")
+        st.subheader("Cleaning Report")
 
         # Categorise report lines
         info_lines   = [r for r in report if r.startswith("📋")]
