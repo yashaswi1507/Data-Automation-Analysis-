@@ -9,3 +9,4 @@ lxml
 kagglehub
 openpyxl
 xlrd
+statsmodels
