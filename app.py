@@ -179,10 +179,10 @@ if raw_df is not None:
             "Fill Method",
             ["Median", "Mean", "Mode", "Drop Rows"],
         )
-        st.sidebar.info("Manual override active — numeric columns will use your chosen method.")
+        st.sidebar.info("⚙️ Manual override active — numeric columns will use your chosen method.")
     else:
         missing_option = "Auto"
-        st.sidebar.success("Auto mode — each column filled by its data personality.")
+        st.sidebar.success("✅ Auto mode — each column filled by its data personality.")
 
     st.sidebar.divider()
 
@@ -226,8 +226,8 @@ if raw_df is not None:
     # =====================================================
 
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "Dashboard", "Summary", "Visualization Studio",
-        "Query Engine", "ML Prediction", "Auto Dashboard"
+        "📊 Dashboard", "📋 Summary", "📈 Visualization Studio",
+        "🔍 Query Engine", "🤖 ML Prediction", "⚡ Auto Dashboard"
     ])
 
     # =====================================================
@@ -271,7 +271,7 @@ if raw_df is not None:
         st.divider()
 
         # ── Cleaning Report — improved UI ────────────────
-        st.subheader("Cleaning Report")
+        st.subheader("🧹 Cleaning Report")
 
         # Categorise report lines
         info_lines   = [r for r in report if r.startswith("📋")]
@@ -293,12 +293,12 @@ if raw_df is not None:
 
         st.divider()
 
-        with st.expander("Dataset Info", expanded=False):
+        with st.expander("📝 Dataset Info", expanded=False):
             for r in info_lines:
                 st.write(r)
 
         if split_lines:
-            with st.expander(f"Structured Columns Split ({len(split_lines)})", expanded=True):
+            with st.expander(f"✂️ Structured Columns Split ({len(split_lines)})", expanded=True):
                 for r in split_lines + [l for l in fill_lines if "↳" in l]:
                     if "↳" in r:
                         st.caption(r)
@@ -307,7 +307,7 @@ if raw_df is not None:
 
         non_arrow_fills = [l for l in fill_lines if "↳" not in l]
         if non_arrow_fills:
-            with st.expander(f"Missing Values Filled ({len(non_arrow_fills)})", expanded=True):
+            with st.expander(f"🔧 Missing Values Filled ({len(non_arrow_fills)})", expanded=True):
                 for r in non_arrow_fills:
                     # Colour by method used
                     if "Unknown" in r:
@@ -320,12 +320,12 @@ if raw_df is not None:
                         st.success(r)
 
         if dup_lines:
-            with st.expander("Duplicates", expanded=False):
+            with st.expander("🗑️ Duplicates", expanded=False):
                 for r in dup_lines:
                     st.success(r)
 
         if outlier_lines:
-            with st.expander(f"Outlier Handling ({len(outlier_lines)})", expanded=False):
+            with st.expander(f"📉 Outlier Handling ({len(outlier_lines)})", expanded=False):
                 for r in outlier_lines:
                     st.info(r)
 
@@ -341,7 +341,7 @@ if raw_df is not None:
         st.dataframe(clean_df.head(rows_to_show), use_container_width=True)
 
         st.download_button(
-            label="Download Cleaned CSV",
+            label="⬇️ Download Cleaned CSV",
             data=clean_df.to_csv(index=False).encode("utf-8"),
             file_name="cleaned_data.csv",
             mime="text/csv"
@@ -377,81 +377,299 @@ if raw_df is not None:
     with tab3:
         st.subheader("Visualization Studio")
 
-        all_columns     = filtered_df.columns.tolist()
-        numeric_cols    = filtered_df.select_dtypes(include="number").columns.tolist()
-        categorical_cols= filtered_df.select_dtypes(exclude="number").columns.tolist()
+        all_columns      = filtered_df.columns.tolist()
+        numeric_cols     = filtered_df.select_dtypes(include="number").columns.tolist()
+        categorical_cols = filtered_df.select_dtypes(exclude="number").columns.tolist()
 
+        # ── Smart data limiter ────────────────────────────────────────
+        # For categorical axes: too many unique values = messy chart.
+        # Default: show Top N aggregated. User can expand if needed.
+
+        DEFAULT_TOP_N = 15   # clean default
+        MAX_SCATTER   = 500  # scatter points before sampling
+
+        def smart_limit_categorical(df, col, y_col, agg, top_n, show_all):
+            """
+            Aggregate col→y_col and return top_n rows (or all if show_all).
+            Works for bar, pie, line-by-category.
+            """
+            grouped = (
+                df.groupby(col)[y_col]
+                .agg(agg)
+                .reset_index()
+                .sort_values(y_col, ascending=False)
+            )
+            if not show_all:
+                grouped = grouped.head(top_n)
+            return grouped
+
+        def smart_limit_scatter(df, show_all):
+            """Sample large scatter datasets for readability."""
+            if show_all or len(df) <= MAX_SCATTER:
+                return df, len(df)
+            sampled = df.sample(MAX_SCATTER, random_state=42)
+            return sampled, len(df)
+
+        # ── Chart type selector ───────────────────────────────────────
         chart_type = st.selectbox("Choose Chart Type", [
-            "Bar Chart","Line Chart","Scatter Plot",
-            "Histogram","Box Plot","Pie Chart","Correlation Heatmap"
+            "Bar Chart", "Line Chart", "Scatter Plot",
+            "Histogram", "Box Plot", "Pie Chart", "Correlation Heatmap"
         ])
 
-        use_groupby = st.checkbox("Use Group By")
-        group_col   = None
-        agg_func    = None
+        st.divider()
 
-        if use_groupby and categorical_cols:
-            group_col = st.selectbox("Group By Column", categorical_cols)
-            agg_func  = st.selectbox("Aggregation", ["sum","mean","max","min","count"])
+        # ── Controls row ──────────────────────────────────────────────
+        ctrl1, ctrl2, ctrl3 = st.columns([2, 2, 2])
 
-        if chart_type == "Bar Chart" and categorical_cols and numeric_cols:
-            x_col    = st.selectbox("X-axis", categorical_cols, key="bar_x")
-            y_col    = st.selectbox("Y-axis", numeric_cols,    key="bar_y")
-            chart_df = filtered_df.copy()
-            if use_groupby and group_col:
-                chart_df = chart_df.groupby(group_col)[y_col].agg(agg_func).reset_index()
-                fig = px.bar(chart_df, x=group_col, y=y_col, color=group_col)
+        with ctrl1:
+            use_groupby = st.checkbox("Use Group By")
+            group_col   = None
+            agg_func    = "sum"
+            if use_groupby and categorical_cols:
+                group_col = st.selectbox("Group By Column", categorical_cols, key="grp_col")
+                agg_func  = st.selectbox("Aggregation", ["sum","mean","max","min","count"], key="grp_agg")
+
+        with ctrl2:
+            # Charts that aggregate categories benefit from Top N
+            if chart_type in ("Bar Chart","Pie Chart","Line Chart"):
+                show_all = st.toggle("Show All Values", value=False,
+                    help=f"OFF = Top {DEFAULT_TOP_N} values only (cleaner). ON = all values.")
+                if show_all:
+                    top_n = st.slider("Max values to show", 10, 200, 50, key="topn_slider")
+                else:
+                    top_n = DEFAULT_TOP_N
+            elif chart_type == "Scatter Plot":
+                show_all = st.toggle("Show All Points", value=False,
+                    help=f"OFF = max {MAX_SCATTER} points sampled. ON = all rows.")
+                top_n = DEFAULT_TOP_N
             else:
-                fig = px.bar(chart_df, x=x_col, y=y_col, color=x_col)
-            st.plotly_chart(fig, use_container_width=True)
+                show_all = True
+                top_n    = DEFAULT_TOP_N
 
-        elif chart_type == "Line Chart" and numeric_cols:
-            x_col    = st.selectbox("X-axis", all_columns, key="line_x")
-            y_col    = st.selectbox("Y-axis", numeric_cols, key="line_y")
-            chart_df = filtered_df.copy()
-            if use_groupby and group_col:
-                chart_df = chart_df.groupby(group_col)[y_col].agg(agg_func).reset_index()
-                fig = px.line(chart_df, x=group_col, y=y_col)
+        with ctrl3:
+            sort_order = "desc"
+            if chart_type in ("Bar Chart","Line Chart"):
+                sort_order = st.radio("Sort", ["Top → Bottom","Bottom → Top","Original Order"],
+                                      horizontal=True, key="sort_radio")
+
+        st.divider()
+
+        # ── Render charts ──────────────────────────────────────────────
+
+        # ── BAR CHART ────────────────────────────────────────────────
+        if chart_type == "Bar Chart":
+            if not categorical_cols or not numeric_cols:
+                st.warning("Need at least one categorical and one numeric column.")
             else:
-                fig = px.line(chart_df, x=x_col, y=y_col)
-            st.plotly_chart(fig, use_container_width=True)
+                x_col = st.selectbox("X-axis (Category)", categorical_cols, key="bar_x")
+                y_col = st.selectbox("Y-axis (Value)",    numeric_cols,     key="bar_y")
+                agg   = agg_func if use_groupby else "sum"
+                grp   = group_col if use_groupby else x_col
 
-        elif chart_type == "Scatter Plot" and len(numeric_cols) >= 2:
-            x_col    = st.selectbox("X-axis", numeric_cols, key="scatter_x")
-            y_col    = st.selectbox("Y-axis", numeric_cols, key="scatter_y")
-            chart_df = filtered_df.copy()
-            if use_groupby and group_col:
-                chart_df = chart_df.groupby(group_col)[[x_col, y_col]].mean().reset_index()
-                fig = px.scatter(chart_df, x=x_col, y=y_col, color=group_col)
+                chart_df = smart_limit_categorical(filtered_df, grp, y_col, agg, top_n, show_all)
+
+                ascending = sort_order == "Bottom → Top"
+                if sort_order != "Original Order":
+                    chart_df = chart_df.sort_values(y_col, ascending=ascending)
+
+                total_cats = filtered_df[grp].nunique()
+                showing    = len(chart_df)
+
+                if not show_all and total_cats > top_n:
+                    st.caption(f"📊 Showing top {showing} of {total_cats} categories by {y_col}. Toggle 'Show All Values' to see more.")
+
+                fig = px.bar(
+                    chart_df, x=grp, y=y_col, color=grp,
+                    text_auto=".2s",
+                    template="plotly_white",
+                    color_discrete_sequence=px.colors.qualitative.Set2,
+                )
+                fig.update_layout(
+                    xaxis_tickangle=-35,
+                    showlegend=False,
+                    bargap=0.25,
+                    height=480,
+                )
+                fig.update_traces(textposition="outside", cliponaxis=False)
+                st.plotly_chart(fig, use_container_width=True)
+
+        # ── LINE CHART ───────────────────────────────────────────────
+        elif chart_type == "Line Chart":
+            if not numeric_cols:
+                st.warning("Need at least one numeric column.")
             else:
-                fig = px.scatter(chart_df, x=x_col, y=y_col)
-            st.plotly_chart(fig, use_container_width=True)
+                x_col = st.selectbox("X-axis", all_columns,   key="line_x")
+                y_col = st.selectbox("Y-axis", numeric_cols,  key="line_y")
 
-        elif chart_type == "Histogram" and numeric_cols:
-            col      = st.selectbox("Column", numeric_cols, key="hist_col")
-            chart_df = filtered_df.copy()
-            fig      = px.histogram(chart_df, x=col, color=group_col if use_groupby else None)
-            st.plotly_chart(fig, use_container_width=True)
+                if use_groupby and group_col:
+                    chart_df = smart_limit_categorical(filtered_df, group_col, y_col, agg_func, top_n, show_all)
+                    x_use    = group_col
+                else:
+                    chart_df = filtered_df[[x_col, y_col]].copy().dropna()
+                    # For high-cardinality x, sort and optionally limit
+                    if not show_all and len(chart_df) > top_n * 10:
+                        chart_df = chart_df.sort_values(x_col).iloc[:: max(1, len(chart_df)//(top_n*10))]
+                    else:
+                        chart_df = chart_df.sort_values(x_col)
+                    x_use = x_col
 
-        elif chart_type == "Box Plot" and numeric_cols:
-            col      = st.selectbox("Column", numeric_cols, key="box_col")
-            chart_df = filtered_df.copy()
-            fig      = px.box(chart_df, y=col, color=group_col if use_groupby else None)
-            st.plotly_chart(fig, use_container_width=True)
+                total_pts = len(filtered_df)
+                showing   = len(chart_df)
+                if not show_all and showing < total_pts:
+                    st.caption(f"📈 Showing {showing} of {total_pts} points for clarity.")
 
-        elif chart_type == "Pie Chart" and categorical_cols:
-            col      = st.selectbox("Category", categorical_cols, key="pie_col")
-            chart_df = filtered_df.copy()
-            pie_col  = group_col if (use_groupby and group_col) else col
-            pie_data = chart_df[pie_col].value_counts().reset_index()
-            pie_data.columns = [pie_col, "Count"]
-            fig = px.pie(pie_data, names=pie_col, values="Count")
-            st.plotly_chart(fig, use_container_width=True)
+                fig = px.line(
+                    chart_df, x=x_use, y=y_col,
+                    markers=len(chart_df) <= 60,
+                    template="plotly_white",
+                    color_discrete_sequence=["#636EFA"],
+                )
+                fig.update_layout(height=460, xaxis_tickangle=-30)
+                st.plotly_chart(fig, use_container_width=True)
 
-        elif chart_type == "Correlation Heatmap" and numeric_cols:
-            corr = filtered_df[numeric_cols].corr()
-            fig  = px.imshow(corr, text_auto=True)
-            st.plotly_chart(fig, use_container_width=True)
+        # ── SCATTER PLOT ─────────────────────────────────────────────
+        elif chart_type == "Scatter Plot":
+            if len(numeric_cols) < 2:
+                st.warning("Need at least two numeric columns.")
+            else:
+                x_col    = st.selectbox("X-axis", numeric_cols, key="scatter_x")
+                y_col    = st.selectbox("Y-axis", numeric_cols, key="scatter_y")
+                color_col= st.selectbox("Color by (optional)", ["None"] + categorical_cols, key="scatter_color")
+
+                chart_df, total_pts = smart_limit_scatter(filtered_df, show_all)
+                showing = len(chart_df)
+
+                if not show_all and showing < total_pts:
+                    st.caption(f"🔵 Showing {showing} sampled points of {total_pts} total for performance. Toggle 'Show All Points' to see everything.")
+
+                fig = px.scatter(
+                    chart_df,
+                    x=x_col, y=y_col,
+                    color=color_col if color_col != "None" else None,
+                    opacity=0.65,
+                    template="plotly_white",
+                    color_discrete_sequence=px.colors.qualitative.Set1,
+                    trendline="ols" if len(chart_df) >= 10 else None,
+                )
+                fig.update_layout(height=480)
+                fig.update_traces(marker=dict(size=6))
+                st.plotly_chart(fig, use_container_width=True)
+
+        # ── HISTOGRAM ────────────────────────────────────────────────
+        elif chart_type == "Histogram":
+            if not numeric_cols:
+                st.warning("Need at least one numeric column.")
+            else:
+                col      = st.selectbox("Column", numeric_cols, key="hist_col")
+                nbins    = st.slider("Number of bins", 10, 100, 30, key="hist_bins")
+                chart_df = filtered_df[[col]].dropna()
+
+                fig = px.histogram(
+                    chart_df, x=col,
+                    nbins=nbins,
+                    template="plotly_white",
+                    color_discrete_sequence=["#636EFA"],
+                    marginal="box",       # mini box plot on top for distribution shape
+                )
+                fig.update_layout(
+                    height=460,
+                    bargap=0.05,
+                    showlegend=False,
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+        # ── BOX PLOT ─────────────────────────────────────────────────
+        elif chart_type == "Box Plot":
+            if not numeric_cols:
+                st.warning("Need at least one numeric column.")
+            else:
+                col      = st.selectbox("Column", numeric_cols, key="box_col")
+                grp_box  = group_col if use_groupby and group_col else None
+
+                if grp_box:
+                    # Limit categories for box plot too
+                    top_cats = (
+                        filtered_df[grp_box].value_counts()
+                        .head(top_n).index.tolist()
+                    )
+                    chart_df = filtered_df[filtered_df[grp_box].isin(top_cats)]
+                    if not show_all and filtered_df[grp_box].nunique() > top_n:
+                        st.caption(f"📦 Showing top {top_n} categories by frequency.")
+                else:
+                    chart_df = filtered_df
+
+                fig = px.box(
+                    chart_df, y=col,
+                    x=grp_box,
+                    color=grp_box,
+                    template="plotly_white",
+                    color_discrete_sequence=px.colors.qualitative.Pastel,
+                    points="outliers",
+                )
+                fig.update_layout(height=460, showlegend=False, xaxis_tickangle=-30)
+                st.plotly_chart(fig, use_container_width=True)
+
+        # ── PIE CHART ────────────────────────────────────────────────
+        elif chart_type == "Pie Chart":
+            if not categorical_cols:
+                st.warning("Need at least one categorical column.")
+            else:
+                col      = st.selectbox("Category Column", categorical_cols, key="pie_col")
+                pie_col  = group_col if (use_groupby and group_col) else col
+
+                pie_data = (
+                    filtered_df[pie_col]
+                    .value_counts()
+                    .reset_index()
+                )
+                pie_data.columns = [pie_col, "Count"]
+
+                total_cats = len(pie_data)
+                if not show_all and total_cats > top_n:
+                    top_data   = pie_data.head(top_n)
+                    other_sum  = pie_data.iloc[top_n:]["Count"].sum()
+                    if other_sum > 0:
+                        other_row  = pd.DataFrame([{pie_col: f"Others ({total_cats - top_n})", "Count": other_sum}])
+                        top_data   = pd.concat([top_data, other_row], ignore_index=True)
+                    pie_data = top_data
+                    st.caption(f"🥧 Top {top_n} shown. Remaining {total_cats - top_n} categories grouped as 'Others'.")
+
+                fig = px.pie(
+                    pie_data, names=pie_col, values="Count",
+                    template="plotly_white",
+                    color_discrete_sequence=px.colors.qualitative.Set3,
+                    hole=0.35,            # donut style — easier to read labels
+                )
+                fig.update_traces(
+                    textposition="outside",
+                    textinfo="percent+label",
+                    pull=[0.03]*len(pie_data),
+                )
+                fig.update_layout(height=500, showlegend=True)
+                st.plotly_chart(fig, use_container_width=True)
+
+        # ── CORRELATION HEATMAP ───────────────────────────────────────
+        elif chart_type == "Correlation Heatmap":
+            if not numeric_cols:
+                st.warning("Need at least two numeric columns.")
+            else:
+                if len(numeric_cols) > 20:
+                    st.caption(f"📐 {len(numeric_cols)} numeric columns — showing all. Deselect columns from filters if needed.")
+
+                corr = filtered_df[numeric_cols].corr().round(2)
+                fig  = px.imshow(
+                    corr,
+                    text_auto=True,
+                    color_continuous_scale="RdBu_r",
+                    zmin=-1, zmax=1,
+                    aspect="auto",
+                    template="plotly_white",
+                )
+                fig.update_layout(
+                    height=max(400, len(numeric_cols) * 40),
+                    coloraxis_colorbar=dict(title="r"),
+                )
+                st.plotly_chart(fig, use_container_width=True)
 
         else:
             st.warning("Not enough columns of the required type for this chart.")
@@ -486,7 +704,7 @@ if raw_df is not None:
             if st.button("Train Model"):
                 model, score = train_prediction_model(filtered_df, target)
                 if model:
-                    st.success(f"Model Trained | R² Score: {score:.2f}")
+                    st.success(f"✅ Model Trained | R² Score: {score:.2f}")
 
                     st.subheader("Make a Prediction")
                     input_data = {}
@@ -497,7 +715,7 @@ if raw_df is not None:
                     if st.button("Predict"):
                         input_df   = pd.DataFrame([input_data])
                         prediction = model.predict(input_df)
-                        st.success(f"Predicted {target}: {prediction[0]:.2f}")
+                        st.success(f"🎯 Predicted {target}: {prediction[0]:.2f}")
                 else:
                     st.error("Model training failed. Check your data.")
         else:
@@ -508,7 +726,7 @@ if raw_df is not None:
     # =====================================================
 
     with tab6:
-        st.subheader("AI Auto Dashboard")
+        st.subheader("⚡ AI Auto Dashboard")
 
         # KPIs
         metrics     = generate_kpis(filtered_df)
