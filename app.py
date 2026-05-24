@@ -12,6 +12,7 @@ from preprocessing import DataPreprocessor
 from query_engine import parse_query, execute_query, generate_query_insight
 from ml_engine import train_prediction_model, detect_task_type, predict_single
 from dashboard_generator import generate_kpis, generate_auto_charts, generate_insights
+from export_engine import export_html, export_pdf, export_ppt
 
 
 # ─────────────────────────────────────────────────────────────
@@ -1152,52 +1153,42 @@ if raw_df is not None:
 
                 st.divider()
 
-                # Export as HTML
+                # Export Report
                 st.markdown("### ⬇️ Export Report")
-                if st.button("📥 Generate HTML Export", key=f"export_{report_choice}"):
-                    import plotly.io as pio
+                fmt_col, btn_col = st.columns([2,1])
+                with fmt_col:
+                    export_fmt = st.radio(
+                        "Format",
+                        ["HTML", "PDF", "PPT"],
+                        horizontal=True,
+                        key=f"fmt_{report_choice}",
+                    )
+                with btn_col:
+                    st.write("")
+                    gen_export = st.button("📥 Generate", key=f"gen_{report_choice}", type="primary")
 
-                    kpi_html = ""
-                    for k in rpt_keys:
-                        kpi_html += f'<div class="kpi-card"><div class="kpi-label">{k}</div><div class="kpi-value">{rpt_kpis[k]}</div></div>'
-
-                    charts_html = ""
-                    for chart in rpt_charts:
-                        _fig = _json_to_fig(chart["fig_json"]) if "fig_json" in chart else chart.get("fig")
-                        if _fig:
-                            ch = pio.to_html(_fig, full_html=False, include_plotlyjs="cdn")
-                            charts_html += f'<div class="chart-box"><b>{chart["title"]}</b><br>{ch}</div>'
-
-                    insights_html = ""
-                    for ins in rpt.get("insights", []):
-                        insights_html += f'<div class="insight">{ins.replace("**","").replace("*","")}</div>'
-
-                    full_html = f"""<!DOCTYPE html>
-<html><head><title>{report_choice}</title>
-<style>
-  body{{font-family:Arial,sans-serif;padding:30px;background:#f4f6f9;}}
-  h1{{color:#2c3e50;border-bottom:3px solid #3498db;padding-bottom:10px;}}
-  h2{{color:#34495e;margin-top:30px;}}
-  .kpi-row{{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:28px;}}
-  .kpi-card{{background:white;border-radius:12px;padding:18px 28px;box-shadow:0 2px 8px rgba(0,0,0,0.08);text-align:center;min-width:120px;}}
-  .kpi-label{{font-size:12px;color:#888;margin-bottom:6px;}}
-  .kpi-value{{font-size:24px;font-weight:bold;color:#2c3e50;}}
-  .chart-grid{{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:28px;}}
-  .chart-box{{background:white;border-radius:12px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,0.08);}}
-  .insight{{background:#eaf4fb;border-left:4px solid #3498db;padding:10px 15px;margin:8px 0;border-radius:4px;font-size:14px;}}
-</style></head><body>
-<h1>📊 {report_choice}</h1>
-<div class="kpi-row">{kpi_html}</div>
-<h2>📈 Charts</h2>
-<div class="chart-grid">{charts_html}</div>
-<h2>💡 Insights</h2>
-{insights_html}
-</body></html>"""
+                if gen_export:
+                    with st.spinner(f"Generating {export_fmt}..."):
+                        exp_kpis   = rpt.get("kpis", {})
+                        exp_charts = rpt.get("charts", [])
+                        exp_ins    = rpt.get("insights", [])
+                        if export_fmt == "HTML":
+                            data  = export_html(report_choice, exp_kpis, exp_charts, exp_ins)
+                            fname = f"{report_choice.replace(' ','_')}.html"
+                            mime  = "text/html"
+                        elif export_fmt == "PDF":
+                            data  = export_pdf(report_choice, exp_kpis, exp_charts, exp_ins)
+                            fname = f"{report_choice.replace(' ','_')}.pdf"
+                            mime  = "application/pdf"
+                        else:
+                            data  = export_ppt(report_choice, exp_kpis, exp_charts, exp_ins)
+                            fname = f"{report_choice.replace(' ','_')}.pptx"
+                            mime  = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 
                     st.download_button(
-                        label="⬇️ Download HTML Report",
-                        data=full_html.encode("utf-8"),
-                        file_name=f"{report_choice.replace(' ','_')}_report.html",
-                        mime="text/html",
-                        key=f"dl_{report_choice}",
+                        label=f"⬇️ Download {export_fmt}",
+                        data=data,
+                        file_name=fname,
+                        mime=mime,
+                        key=f"dl_{report_choice}_{export_fmt}",
                     )

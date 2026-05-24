@@ -10,3 +10,7 @@ kagglehub
 openpyxl
 xlrd
 statsmodels
+reportlab
+python-pptx
+statsmodels
+kaleido
