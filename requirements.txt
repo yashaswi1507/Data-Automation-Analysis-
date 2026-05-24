@@ -13,4 +13,4 @@ statsmodels
 reportlab
 python-pptx
 statsmodels
-kaleido
+kaleido == 0.2.1
