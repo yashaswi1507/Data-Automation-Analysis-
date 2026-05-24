@@ -698,10 +698,21 @@ if raw_df is not None:
 
         if query:
             op, target, group = parse_query(query, filtered_df)
-            result_dict       = execute_query(filtered_df, op, target, group)
-            error             = result_dict.get("error")
-            result            = result_dict.get("result")
-            query_desc        = result_dict.get("query_desc","")
+            raw_result        = execute_query(filtered_df, op, target, group)
+
+            # Support both old (returns value directly) and new (returns dict) query_engine
+            if isinstance(raw_result, dict):
+                result_dict = raw_result
+            else:
+                result_dict = {
+                    "result":     raw_result,
+                    "error":      None if raw_result != "Invalid query" else "Could not understand query.",
+                    "query_desc": f"{op}({target})" if op and target else "",
+                }
+
+            error      = result_dict.get("error")
+            result     = result_dict.get("result")
+            query_desc = result_dict.get("query_desc", "")
 
             st.divider()
 
@@ -735,7 +746,11 @@ if raw_df is not None:
                         fig.update_traces(textposition="outside")
                         st.plotly_chart(fig, use_container_width=True)
                 else:
-                    st.metric(label=query_desc, value=result_dict["result"] if isinstance(result_dict["result"], str) else f"{float(result_dict['result']):,.2f}")
+                    try:
+                        display_val = f"{float(result):,.2f}" if not isinstance(result, str) else result
+                    except Exception:
+                        display_val = str(result)
+                    st.metric(label=query_desc, value=display_val)
 
                 # Insights
                 insights = generate_query_insight(result_dict, target, group)
