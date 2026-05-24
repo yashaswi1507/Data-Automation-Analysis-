@@ -13,13 +13,20 @@ import plotly.io as pio
 
 def _fig_to_png(fig, width=600, height=380):
     """
-    Convert plotly figure to PNG bytes using matplotlib.
-    No Chrome, no kaleido, no browser needed.
+    Convert plotly figure to PNG bytes.
+    Uses kaleido v0.2.1 (no Chrome needed).
+    Falls back to matplotlib if kaleido unavailable.
     """
+    try:
+        fig.update_layout(width=width, height=height, margin=dict(t=40,b=30,l=30,r=20))
+        return fig.to_image(format="png")
+    except Exception:
+        pass
+
+    # Matplotlib fallback
     from chart_renderer import fig_to_png
     try:
-        fig_json = fig.to_json()
-        return fig_to_png(fig_json, width_px=width, height_px=height)
+        return fig_to_png(fig.to_json(), width_px=width, height_px=height)
     except Exception:
         return None
 
