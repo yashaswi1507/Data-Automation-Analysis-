@@ -273,9 +273,9 @@ if raw_df is not None:
     # TABS
     # =====================================================
 
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
         "📊 Dashboard", "📋 Summary", "📈 Visualization Studio",
-        "🔍 Query Engine", "🤖 ML Prediction", "⚡ Auto Dashboard"
+        "🔍 Query Engine", "🤖 ML Prediction", "⚡ Auto Dashboard", "📁 My Reports"
     ])
 
     # =====================================================
@@ -599,7 +599,7 @@ if raw_df is not None:
                     opacity=0.65,
                     template="plotly_white",
                     color_discrete_sequence=px.colors.qualitative.Set1,
-                    trendline="ols" if len(chart_df) >= 10 else None,
+
                 )
                 fig.update_layout(height=480)
                 fig.update_traces(marker=dict(size=6))
@@ -1073,57 +1073,131 @@ if raw_df is not None:
 
         st.divider()
 
-        # ── Saved Reports viewer ──────────────────────────────────
-        saved = st.session_state.get("saved_reports", {})
-        if saved:
-            st.subheader("📁 Saved Reports")
-            report_choice = st.selectbox(
-                "Select a saved report to view",
-                list(saved.keys()),
-                key="report_select",
-            )
-
-            if report_choice and report_choice in saved:
-                rpt = saved[report_choice]
-
-                # KPI row
-                rpt_kpis = rpt.get("kpis", {})
-                rpt_keys = list(rpt_kpis.keys())[:5]
-                if rpt_keys:
-                    r_cols = st.columns(len(rpt_keys))
-                    for i, k in enumerate(rpt_keys):
-                        r_cols[i].metric(k, rpt_kpis[k])
-
-                st.divider()
-
-                # Charts grid
-                rpt_charts = rpt.get("charts", [])
-                for idx in range(0, len(rpt_charts), 2):
-                    row = rpt_charts[idx: idx + 2]
-                    cols = st.columns(len(row))
-                    for col_ui, chart in zip(cols, row):
-                        with col_ui:
-                            badge = "🤖" if chart.get("source") == "auto" else "🎨"
-                            st.caption(f"{badge} {chart['title']}")
-                            _fig = _json_to_fig(chart["fig_json"]) if "fig_json" in chart else chart.get("fig")
-                            if _fig:
-                                st.plotly_chart(_fig, use_container_width=True, key=f"rpt_{report_choice}_{chart['id']}")
-
-                st.divider()
-
-                # Insights
-                st.subheader("💡 Insights")
-                for ins in rpt.get("insights", []):
-                    st.info(ins)
-
-                # Delete report
-                if st.button(f"🗑️ Delete Report '{report_choice}'"):
-                    del st.session_state["saved_reports"][report_choice]
-                    st.rerun()
-
         # ── AI Insights (live) ────────────────────────────────────
-        st.divider()
         st.subheader("💡 Live AI Insights")
         insights = generate_insights(filtered_df)
         for ins in insights:
             st.info(ins)
+
+    # =====================================================
+    # TAB 7 — MY REPORTS  (Power BI style)
+    # =====================================================
+
+    with tab7:
+        saved = st.session_state.get("saved_reports", {})
+        st.subheader("📁 My Reports")
+
+        if not saved:
+            st.info("No reports saved yet. Go to **⚡ Auto Dashboard**, pin your charts, and click **Save Report**.")
+        else:
+            left_col, right_col = st.columns([1, 3])
+
+            with left_col:
+                st.markdown("### 📂 Reports")
+                st.caption(f"{len(saved)} report(s) saved")
+                st.divider()
+
+                for rname in list(saved.keys()):
+                    n_charts = len(saved[rname].get("charts", []))
+                    if st.button(f"📄 {rname}  ·  {n_charts} chart(s)", key=f"rpt_btn_{rname}", use_container_width=True):
+                        st.session_state["active_report"] = rname
+
+                if not st.session_state.get("active_report") or st.session_state["active_report"] not in saved:
+                    st.session_state["active_report"] = list(saved.keys())[0]
+
+            with right_col:
+                report_choice = st.session_state.get("active_report")
+                rpt = saved[report_choice]
+
+                h_col, del_col = st.columns([4, 1])
+                with h_col:
+                    st.markdown(f"## 📊 {report_choice}")
+                with del_col:
+                    if st.button("🗑️ Delete", key=f"del_rpt_{report_choice}"):
+                        del st.session_state["saved_reports"][report_choice]
+                        st.session_state.pop("active_report", None)
+                        st.rerun()
+
+                st.divider()
+
+                # KPIs
+                rpt_kpis = rpt.get("kpis", {})
+                rpt_keys = list(rpt_kpis.keys())[:5]
+                if rpt_keys:
+                    kpi_cols = st.columns(len(rpt_keys))
+                    for i, k in enumerate(rpt_keys):
+                        kpi_cols[i].metric(k, rpt_kpis[k])
+                    st.divider()
+
+                # Charts 2 per row
+                rpt_charts = rpt.get("charts", [])
+                st.markdown(f"**{len(rpt_charts)} Chart(s)**")
+                for i in range(0, len(rpt_charts), 2):
+                    row  = rpt_charts[i: i + 2]
+                    cols = st.columns(len(row))
+                    for col_ui, chart in zip(cols, row):
+                        with col_ui:
+                            badge = "🤖 Auto" if chart.get("source") == "auto" else "🎨 Studio"
+                            st.caption(f"{badge}  |  {chart['title']}")
+                            _fig = _json_to_fig(chart["fig_json"]) if "fig_json" in chart else chart.get("fig")
+                            if _fig:
+                                st.plotly_chart(_fig, use_container_width=True, key=f"myreport_{report_choice}_{chart['id']}_{i}")
+
+                st.divider()
+
+                # Insights
+                st.markdown("### 💡 Insights")
+                for ins in rpt.get("insights", []):
+                    st.info(ins)
+
+                st.divider()
+
+                # Export as HTML
+                st.markdown("### ⬇️ Export Report")
+                if st.button("📥 Generate HTML Export", key=f"export_{report_choice}"):
+                    import plotly.io as pio
+
+                    kpi_html = ""
+                    for k in rpt_keys:
+                        kpi_html += f'<div class="kpi-card"><div class="kpi-label">{k}</div><div class="kpi-value">{rpt_kpis[k]}</div></div>'
+
+                    charts_html = ""
+                    for chart in rpt_charts:
+                        _fig = _json_to_fig(chart["fig_json"]) if "fig_json" in chart else chart.get("fig")
+                        if _fig:
+                            ch = pio.to_html(_fig, full_html=False, include_plotlyjs="cdn")
+                            charts_html += f'<div class="chart-box"><b>{chart["title"]}</b><br>{ch}</div>'
+
+                    insights_html = ""
+                    for ins in rpt.get("insights", []):
+                        insights_html += f'<div class="insight">{ins.replace("**","").replace("*","")}</div>'
+
+                    full_html = f"""<!DOCTYPE html>
+<html><head><title>{report_choice}</title>
+<style>
+  body{{font-family:Arial,sans-serif;padding:30px;background:#f4f6f9;}}
+  h1{{color:#2c3e50;border-bottom:3px solid #3498db;padding-bottom:10px;}}
+  h2{{color:#34495e;margin-top:30px;}}
+  .kpi-row{{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:28px;}}
+  .kpi-card{{background:white;border-radius:12px;padding:18px 28px;box-shadow:0 2px 8px rgba(0,0,0,0.08);text-align:center;min-width:120px;}}
+  .kpi-label{{font-size:12px;color:#888;margin-bottom:6px;}}
+  .kpi-value{{font-size:24px;font-weight:bold;color:#2c3e50;}}
+  .chart-grid{{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:28px;}}
+  .chart-box{{background:white;border-radius:12px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,0.08);}}
+  .insight{{background:#eaf4fb;border-left:4px solid #3498db;padding:10px 15px;margin:8px 0;border-radius:4px;font-size:14px;}}
+</style></head><body>
+<h1>📊 {report_choice}</h1>
+<div class="kpi-row">{kpi_html}</div>
+<h2>📈 Charts</h2>
+<div class="chart-grid">{charts_html}</div>
+<h2>💡 Insights</h2>
+{insights_html}
+</body></html>"""
+
+                    st.download_button(
+                        label="⬇️ Download HTML Report",
+                        data=full_html.encode("utf-8"),
+                        file_name=f"{report_choice.replace(' ','_')}_report.html",
+                        mime="text/html",
+                        key=f"dl_{report_choice}",
+                    )
