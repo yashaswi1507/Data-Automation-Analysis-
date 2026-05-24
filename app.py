@@ -179,10 +179,10 @@ if raw_df is not None:
             "Fill Method",
             ["Median", "Mean", "Mode", "Drop Rows"],
         )
-        st.sidebar.info("⚙️ Manual override active — numeric columns will use your chosen method.")
+        st.sidebar.info("Manual override active — numeric columns will use your chosen method.")
     else:
         missing_option = "Auto"
-        st.sidebar.success("✅ Auto mode — each column filled by its data personality.")
+        st.sidebar.success("Auto mode — each column filled by its data personality.")
 
     st.sidebar.divider()
 
@@ -226,8 +226,8 @@ if raw_df is not None:
     # =====================================================
 
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "📊 Dashboard", "📋 Summary", "📈 Visualization Studio",
-        "🔍 Query Engine", "🤖 ML Prediction", "⚡ Auto Dashboard"
+        "Dashboard", "Summary", "Visualization Studio",
+        "Query Engine", "ML Prediction", "⚡ Auto Dashboard"
     ])
 
     # =====================================================
@@ -293,12 +293,12 @@ if raw_df is not None:
 
         st.divider()
 
-        with st.expander("📝 Dataset Info", expanded=False):
+        with st.expander("Dataset Info", expanded=False):
             for r in info_lines:
                 st.write(r)
 
         if split_lines:
-            with st.expander(f"✂️ Structured Columns Split ({len(split_lines)})", expanded=True):
+            with st.expander(f"Structured Columns Split ({len(split_lines)})", expanded=True):
                 for r in split_lines + [l for l in fill_lines if "↳" in l]:
                     if "↳" in r:
                         st.caption(r)
@@ -307,7 +307,7 @@ if raw_df is not None:
 
         non_arrow_fills = [l for l in fill_lines if "↳" not in l]
         if non_arrow_fills:
-            with st.expander(f"🔧 Missing Values Filled ({len(non_arrow_fills)})", expanded=True):
+            with st.expander(f"Missing Values Filled ({len(non_arrow_fills)})", expanded=True):
                 for r in non_arrow_fills:
                     # Colour by method used
                     if "Unknown" in r:
@@ -320,12 +320,12 @@ if raw_df is not None:
                         st.success(r)
 
         if dup_lines:
-            with st.expander("🗑️ Duplicates", expanded=False):
+            with st.expander("Duplicates", expanded=False):
                 for r in dup_lines:
                     st.success(r)
 
         if outlier_lines:
-            with st.expander(f"📉 Outlier Handling ({len(outlier_lines)})", expanded=False):
+            with st.expander(f"Outlier Handling ({len(outlier_lines)})", expanded=False):
                 for r in outlier_lines:
                     st.info(r)
 
@@ -341,7 +341,7 @@ if raw_df is not None:
         st.dataframe(clean_df.head(rows_to_show), use_container_width=True)
 
         st.download_button(
-            label="⬇️ Download Cleaned CSV",
+            label="⬇️Download Cleaned CSV",
             data=clean_df.to_csv(index=False).encode("utf-8"),
             file_name="cleaned_data.csv",
             mime="text/csv"
@@ -476,7 +476,7 @@ if raw_df is not None:
                 showing    = len(chart_df)
 
                 if not show_all and total_cats > top_n:
-                    st.caption(f"📊 Showing top {showing} of {total_cats} categories by {y_col}. Toggle 'Show All Values' to see more.")
+                    st.caption(f"Showing top {showing} of {total_cats} categories by {y_col}. Toggle 'Show All Values' to see more.")
 
                 fig = px.bar(
                     chart_df, x=grp, y=y_col, color=grp,
@@ -516,7 +516,7 @@ if raw_df is not None:
                 total_pts = len(filtered_df)
                 showing   = len(chart_df)
                 if not show_all and showing < total_pts:
-                    st.caption(f"📈 Showing {showing} of {total_pts} points for clarity.")
+                    st.caption(f"Showing {showing} of {total_pts} points for clarity.")
 
                 fig = px.line(
                     chart_df, x=x_use, y=y_col,
@@ -540,7 +540,7 @@ if raw_df is not None:
                 showing = len(chart_df)
 
                 if not show_all and showing < total_pts:
-                    st.caption(f"🔵 Showing {showing} sampled points of {total_pts} total for performance. Toggle 'Show All Points' to see everything.")
+                    st.caption(f"Showing {showing} sampled points of {total_pts} total for performance. Toggle 'Show All Points' to see everything.")
 
                 fig = px.scatter(
                     chart_df,
@@ -594,7 +594,7 @@ if raw_df is not None:
                     )
                     chart_df = filtered_df[filtered_df[grp_box].isin(top_cats)]
                     if not show_all and filtered_df[grp_box].nunique() > top_n:
-                        st.caption(f"📦 Showing top {top_n} categories by frequency.")
+                        st.caption(f"Showing top {top_n} categories by frequency.")
                 else:
                     chart_df = filtered_df
 
@@ -632,7 +632,7 @@ if raw_df is not None:
                         other_row  = pd.DataFrame([{pie_col: f"Others ({total_cats - top_n})", "Count": other_sum}])
                         top_data   = pd.concat([top_data, other_row], ignore_index=True)
                     pie_data = top_data
-                    st.caption(f"🥧 Top {top_n} shown. Remaining {total_cats - top_n} categories grouped as 'Others'.")
+                    st.caption(f"Top {top_n} shown. Remaining {total_cats - top_n} categories grouped as 'Others'.")
 
                 fig = px.pie(
                     pie_data, names=pie_col, values="Count",
@@ -654,7 +654,7 @@ if raw_df is not None:
                 st.warning("Need at least two numeric columns.")
             else:
                 if len(numeric_cols) > 20:
-                    st.caption(f"📐 {len(numeric_cols)} numeric columns — showing all. Deselect columns from filters if needed.")
+                    st.caption(f"{len(numeric_cols)} numeric columns — showing all. Deselect columns from filters if needed.")
 
                 corr = filtered_df[numeric_cols].corr().round(2)
                 fig  = px.imshow(
@@ -679,7 +679,7 @@ if raw_df is not None:
     # =====================================================
 
     with tab4:
-        st.subheader("🔍 Query Engine")
+        st.subheader("Query Engine")
         st.caption("Ask questions in plain English — e.g. 'average salary by department', 'total sales per region', 'count of students by gender'")
 
         query = st.text_input("Ask a question about your data", placeholder="e.g. average math score by gender")
@@ -692,9 +692,9 @@ if raw_df is not None:
             ex2 = f"maximum {example_cols[0]}"
             ex3 = f"count by {cat_cols[0]}"
             e1, e2, e3 = st.columns(3)
-            if e1.button(f"📊 {ex1}", use_container_width=True): query = ex1
-            if e2.button(f"📈 {ex2}", use_container_width=True): query = ex2
-            if e3.button(f"🔢 {ex3}", use_container_width=True): query = ex3
+            if e1.button(f"{ex1}", use_container_width=True): query = ex1
+            if e2.button(f"{ex2}", use_container_width=True): query = ex2
+            if e3.button(f"{ex3}", use_container_width=True): query = ex3
 
         if query:
             op, target, group = parse_query(query, filtered_df)
@@ -718,7 +718,7 @@ if raw_df is not None:
 
             if error:
                 st.error(f"❌ {error}")
-                st.info("💡 Try queries like: 'average [column] by [column]', 'total [column]', 'count by [column]'")
+                st.info("Try queries like: 'average [column] by [column]', 'total [column]', 'count by [column]'")
             else:
                 st.success(f"✅ {query_desc}")
 
@@ -765,7 +765,7 @@ if raw_df is not None:
     # =====================================================
 
     with tab5:
-        st.subheader("🤖 ML Prediction")
+        st.subheader("ML Prediction")
 
         all_targets = filtered_df.columns.tolist()
         target      = st.selectbox("Select Target Column to Predict", all_targets)
@@ -774,12 +774,12 @@ if raw_df is not None:
             task_hint = detect_task_type(filtered_df[target])
             st.caption(f"Detected task: **{task_hint}** — {'predicting a number' if task_hint == 'regression' else 'predicting a category'}")
 
-        if st.button("🚀 Train & Compare Models", type="primary"):
+        if st.button("Train & Compare Models", type="primary"):
             with st.spinner("Training multiple models and selecting the best one..."):
                 ml_result = train_prediction_model(filtered_df, target)
 
             if ml_result.get("error"):
-                st.error(f"❌ {ml_result['error']}")
+                st.error(f"{ml_result['error']}")
             else:
                 st.session_state["ml_result"] = ml_result
                 st.session_state["ml_target"] = target
@@ -790,7 +790,7 @@ if raw_df is not None:
             st.divider()
 
             # ── Best model banner ────────────────────────────────
-            st.success(f"🏆 Best Model: **{ml_result['best_model_name']}** | Task: {ml_result['task_type'].title()}")
+            st.success(f"Best Model: **{ml_result['best_model_name']}** | Task: {ml_result['task_type'].title()}")
 
             # ── Metrics ──────────────────────────────────────────
             metrics = ml_result["metrics"]
@@ -806,12 +806,12 @@ if raw_df is not None:
             col_cmp, col_imp = st.columns(2)
 
             with col_cmp:
-                st.subheader("📊 Model Comparison")
+                st.subheader("Model Comparison")
                 cmp_df = pd.DataFrame(ml_result["model_comparison"])
                 st.dataframe(cmp_df, use_container_width=True, hide_index=True)
 
             with col_imp:
-                st.subheader("🎯 Feature Importance")
+                st.subheader("Feature Importance")
                 if ml_result["feature_importance"]:
                     imp_df = pd.DataFrame(ml_result["feature_importance"]).head(10)
                     fig_imp = px.bar(
@@ -832,7 +832,7 @@ if raw_df is not None:
             st.divider()
 
             # ── Predict on new input ─────────────────────────────
-            st.subheader("🔮 Make a Prediction")
+            st.subheader("Make a Prediction")
             st.caption("Fill in the values below to predict the target.")
 
             feature_names  = ml_result["feature_names"]
@@ -864,7 +864,7 @@ if raw_df is not None:
                         key=f"ml_input_{feat}"
                     )
 
-            if st.button("🎯 Predict", type="primary"):
+            if st.button("Predict", type="primary"):
                 try:
                     pred = predict_single(ml_result, input_values)
                     if ml_result["task_type"] == "regression":
@@ -882,7 +882,7 @@ if raw_df is not None:
     # =====================================================
 
     with tab6:
-        st.subheader("⚡ AI Auto Dashboard")
+        st.subheader("AI Auto Dashboard")
 
         # KPIs
         metrics     = generate_kpis(filtered_df)
