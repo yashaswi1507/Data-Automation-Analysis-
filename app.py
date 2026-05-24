@@ -13,6 +13,42 @@ from query_engine import parse_query, execute_query, generate_query_insight
 from ml_engine import train_prediction_model, detect_task_type, predict_single
 from dashboard_generator import generate_kpis, generate_auto_charts, generate_insights
 
+
+# ─────────────────────────────────────────────────────────────
+# HELPER — Save chart from Visualization Studio to Dashboard
+# ─────────────────────────────────────────────────────────────
+
+def _fig_to_json(fig):
+    """Serialize plotly fig to JSON string — much lighter than keeping fig object."""
+    return fig.to_json()
+
+def _json_to_fig(json_str):
+    """Deserialize plotly fig from JSON string."""
+    import plotly.io as pio
+    return pio.from_json(json_str)
+
+def _save_to_dashboard_btn(fig, title, chart_type, all_charts_count=0):
+    """Renders a small 'Save to Dashboard' button below a chart."""
+    if "dashboard_charts" not in st.session_state:
+        st.session_state["dashboard_charts"] = []
+
+    btn_key = f"save_dash_{title}_{chart_type}_{all_charts_count}"
+    if st.button(f"📌 Save to Dashboard", key=btn_key, help="Add this chart to Auto Dashboard"):
+        new_id  = int(pd.Timestamp.now().timestamp() * 1000)
+        already = any(c["title"] == title for c in st.session_state["dashboard_charts"])
+        if already:
+            st.toast(f"'{title}' is already in the dashboard.", icon="ℹ️")
+        else:
+            st.session_state["dashboard_charts"].append({
+                "id":         new_id,
+                "title":      title,
+                "fig_json":   _fig_to_json(fig),   # store as JSON not object
+                "chart_type": chart_type,
+                "pinned":     True,
+                "source":     "studio",
+            })
+            st.toast(f"✅ '{title}' saved to Auto Dashboard!", icon="📌")
+
 # =========================================================
 # PAGE CONFIG
 # =========================================================
@@ -179,33 +215,45 @@ if raw_df is not None:
             "Fill Method",
             ["Median", "Mean", "Mode", "Drop Rows"],
         )
-        st.sidebar.info("Manual override active — numeric columns will use your chosen method.")
+        st.sidebar.info("⚙️ Manual override active — numeric columns will use your chosen method.")
     else:
         missing_option = "Auto"
-        st.sidebar.success("Auto mode — each column filled by its data personality.")
+        st.sidebar.success("✅ Auto mode — each column filled by its data personality.")
 
     st.sidebar.divider()
 
     # =====================================================
-    # DATASET PROFILING
+    # DATASET PROFILING + PREPROCESSING  (cached)
     # =====================================================
+
+    @st.cache_data(show_spinner=False)
+    def run_profiler(df_hash, _df):
+        profiler        = DatasetProfiler(_df)
+        dataset_profile = profiler.detect_dataset_type()
+        column_profiles = profiler.profile_columns()
+        return dataset_profile, column_profiles
+
+    @st.cache_data(show_spinner=False)
+    def run_preprocessing(df_hash, _df, outlier_option, missing_option, _dataset_profile, _column_profiles):
+        processor = DataPreprocessor(_df, outlier_option, missing_option, _dataset_profile, _column_profiles)
+        return processor.process()
+
+    # Use df shape+columns as cache key (avoids hashing large df)
+    df_hash = f"{df.shape}_{list(df.columns)}_{df.dtypes.to_dict()}"
 
     dataset_profile = "general"
     column_profiles = {}
 
     try:
-        profiler        = DatasetProfiler(df)
-        dataset_profile = profiler.detect_dataset_type()
-        column_profiles = profiler.profile_columns()
+        dataset_profile, column_profiles = run_profiler(df_hash, df)
     except Exception as e:
         st.warning(f"Profiler Warning: {e}")
 
-    # =====================================================
-    # PREPROCESSING
-    # =====================================================
-
-    processor        = DataPreprocessor(df, outlier_option, missing_option, dataset_profile, column_profiles)
-    clean_df, report = processor.process()
+    try:
+        clean_df, report = run_preprocessing(df_hash, df, outlier_option, missing_option, dataset_profile, column_profiles)
+    except Exception as e:
+        st.error(f"Preprocessing Error: {e}")
+        clean_df, report = df.copy(), []
 
     # =====================================================
     # SIDEBAR FILTERS
@@ -226,8 +274,8 @@ if raw_df is not None:
     # =====================================================
 
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "Dashboard", "Summary", "Visualization Studio",
-        "Query Engine", "ML Prediction", "Auto Dashboard"
+        "📊 Dashboard", "📋 Summary", "📈 Visualization Studio",
+        "🔍 Query Engine", "🤖 ML Prediction", "⚡ Auto Dashboard"
     ])
 
     # =====================================================
@@ -271,7 +319,7 @@ if raw_df is not None:
         st.divider()
 
         # ── Cleaning Report — improved UI ────────────────
-        st.subheader("Cleaning Report")
+        st.subheader("🧹 Cleaning Report")
 
         # Categorise report lines
         info_lines   = [r for r in report if r.startswith("📋")]
@@ -293,12 +341,12 @@ if raw_df is not None:
 
         st.divider()
 
-        with st.expander("Dataset Info", expanded=False):
+        with st.expander("📝 Dataset Info", expanded=False):
             for r in info_lines:
                 st.write(r)
 
         if split_lines:
-            with st.expander(f"Structured Columns Split ({len(split_lines)})", expanded=True):
+            with st.expander(f"✂️ Structured Columns Split ({len(split_lines)})", expanded=True):
                 for r in split_lines + [l for l in fill_lines if "↳" in l]:
                     if "↳" in r:
                         st.caption(r)
@@ -307,7 +355,7 @@ if raw_df is not None:
 
         non_arrow_fills = [l for l in fill_lines if "↳" not in l]
         if non_arrow_fills:
-            with st.expander(f"Missing Values Filled ({len(non_arrow_fills)})", expanded=True):
+            with st.expander(f"🔧 Missing Values Filled ({len(non_arrow_fills)})", expanded=True):
                 for r in non_arrow_fills:
                     # Colour by method used
                     if "Unknown" in r:
@@ -320,12 +368,12 @@ if raw_df is not None:
                         st.success(r)
 
         if dup_lines:
-            with st.expander("Duplicates", expanded=False):
+            with st.expander("🗑️ Duplicates", expanded=False):
                 for r in dup_lines:
                     st.success(r)
 
         if outlier_lines:
-            with st.expander(f"Outlier Handling ({len(outlier_lines)})", expanded=False):
+            with st.expander(f"📉 Outlier Handling ({len(outlier_lines)})", expanded=False):
                 for r in outlier_lines:
                     st.info(r)
 
@@ -341,7 +389,7 @@ if raw_df is not None:
         st.dataframe(clean_df.head(rows_to_show), use_container_width=True)
 
         st.download_button(
-            label="⬇️Download Cleaned CSV",
+            label="⬇️ Download Cleaned CSV",
             data=clean_df.to_csv(index=False).encode("utf-8"),
             file_name="cleaned_data.csv",
             mime="text/csv"
@@ -476,7 +524,7 @@ if raw_df is not None:
                 showing    = len(chart_df)
 
                 if not show_all and total_cats > top_n:
-                    st.caption(f"Showing top {showing} of {total_cats} categories by {y_col}. Toggle 'Show All Values' to see more.")
+                    st.caption(f"📊 Showing top {showing} of {total_cats} categories by {y_col}. Toggle 'Show All Values' to see more.")
 
                 fig = px.bar(
                     chart_df, x=grp, y=y_col, color=grp,
@@ -492,6 +540,7 @@ if raw_df is not None:
                 )
                 fig.update_traces(textposition="outside", cliponaxis=False)
                 st.plotly_chart(fig, use_container_width=True)
+                _save_to_dashboard_btn(fig, f"Bar: {y_col} by {grp}", "bar", all_charts_count=len(st.session_state.get("dashboard_charts",[])))
 
         # ── LINE CHART ───────────────────────────────────────────────
         elif chart_type == "Line Chart":
@@ -516,7 +565,7 @@ if raw_df is not None:
                 total_pts = len(filtered_df)
                 showing   = len(chart_df)
                 if not show_all and showing < total_pts:
-                    st.caption(f"Showing {showing} of {total_pts} points for clarity.")
+                    st.caption(f"📈 Showing {showing} of {total_pts} points for clarity.")
 
                 fig = px.line(
                     chart_df, x=x_use, y=y_col,
@@ -526,6 +575,7 @@ if raw_df is not None:
                 )
                 fig.update_layout(height=460, xaxis_tickangle=-30)
                 st.plotly_chart(fig, use_container_width=True)
+                _save_to_dashboard_btn(fig, f"Line: {y_col} over {x_use}", "line", all_charts_count=len(st.session_state.get("dashboard_charts",[])))
 
         # ── SCATTER PLOT ─────────────────────────────────────────────
         elif chart_type == "Scatter Plot":
@@ -540,7 +590,7 @@ if raw_df is not None:
                 showing = len(chart_df)
 
                 if not show_all and showing < total_pts:
-                    st.caption(f"Showing {showing} sampled points of {total_pts} total for performance. Toggle 'Show All Points' to see everything.")
+                    st.caption(f"🔵 Showing {showing} sampled points of {total_pts} total for performance. Toggle 'Show All Points' to see everything.")
 
                 fig = px.scatter(
                     chart_df,
@@ -554,6 +604,7 @@ if raw_df is not None:
                 fig.update_layout(height=480)
                 fig.update_traces(marker=dict(size=6))
                 st.plotly_chart(fig, use_container_width=True)
+                _save_to_dashboard_btn(fig, f"Scatter: {x_col} vs {y_col}", "scatter", all_charts_count=len(st.session_state.get("dashboard_charts",[])))
 
         # ── HISTOGRAM ────────────────────────────────────────────────
         elif chart_type == "Histogram":
@@ -577,6 +628,7 @@ if raw_df is not None:
                     showlegend=False,
                 )
                 st.plotly_chart(fig, use_container_width=True)
+                _save_to_dashboard_btn(fig, f"Histogram: {col}", "histogram", all_charts_count=len(st.session_state.get("dashboard_charts",[])))
 
         # ── BOX PLOT ─────────────────────────────────────────────────
         elif chart_type == "Box Plot":
@@ -594,7 +646,7 @@ if raw_df is not None:
                     )
                     chart_df = filtered_df[filtered_df[grp_box].isin(top_cats)]
                     if not show_all and filtered_df[grp_box].nunique() > top_n:
-                        st.caption(f"Showing top {top_n} categories by frequency.")
+                        st.caption(f"📦 Showing top {top_n} categories by frequency.")
                 else:
                     chart_df = filtered_df
 
@@ -608,6 +660,7 @@ if raw_df is not None:
                 )
                 fig.update_layout(height=460, showlegend=False, xaxis_tickangle=-30)
                 st.plotly_chart(fig, use_container_width=True)
+                _save_to_dashboard_btn(fig, f"Box: {col}", "box", all_charts_count=len(st.session_state.get("dashboard_charts",[])))
 
         # ── PIE CHART ────────────────────────────────────────────────
         elif chart_type == "Pie Chart":
@@ -632,7 +685,7 @@ if raw_df is not None:
                         other_row  = pd.DataFrame([{pie_col: f"Others ({total_cats - top_n})", "Count": other_sum}])
                         top_data   = pd.concat([top_data, other_row], ignore_index=True)
                     pie_data = top_data
-                    st.caption(f"Top {top_n} shown. Remaining {total_cats - top_n} categories grouped as 'Others'.")
+                    st.caption(f"🥧 Top {top_n} shown. Remaining {total_cats - top_n} categories grouped as 'Others'.")
 
                 fig = px.pie(
                     pie_data, names=pie_col, values="Count",
@@ -647,6 +700,7 @@ if raw_df is not None:
                 )
                 fig.update_layout(height=500, showlegend=True)
                 st.plotly_chart(fig, use_container_width=True)
+                _save_to_dashboard_btn(fig, f"Pie: {pie_col}", "pie", all_charts_count=len(st.session_state.get("dashboard_charts",[])))
 
         # ── CORRELATION HEATMAP ───────────────────────────────────────
         elif chart_type == "Correlation Heatmap":
@@ -654,7 +708,7 @@ if raw_df is not None:
                 st.warning("Need at least two numeric columns.")
             else:
                 if len(numeric_cols) > 20:
-                    st.caption(f"{len(numeric_cols)} numeric columns — showing all. Deselect columns from filters if needed.")
+                    st.caption(f"📐 {len(numeric_cols)} numeric columns — showing all. Deselect columns from filters if needed.")
 
                 corr = filtered_df[numeric_cols].corr().round(2)
                 fig  = px.imshow(
@@ -670,6 +724,7 @@ if raw_df is not None:
                     coloraxis_colorbar=dict(title="r"),
                 )
                 st.plotly_chart(fig, use_container_width=True)
+                _save_to_dashboard_btn(fig, "Correlation Heatmap", "heatmap", all_charts_count=len(st.session_state.get("dashboard_charts",[])))
 
         else:
             st.warning("Not enough columns of the required type for this chart.")
@@ -679,7 +734,7 @@ if raw_df is not None:
     # =====================================================
 
     with tab4:
-        st.subheader("Query Engine")
+        st.subheader("🔍 Query Engine")
         st.caption("Ask questions in plain English — e.g. 'average salary by department', 'total sales per region', 'count of students by gender'")
 
         query = st.text_input("Ask a question about your data", placeholder="e.g. average math score by gender")
@@ -692,9 +747,9 @@ if raw_df is not None:
             ex2 = f"maximum {example_cols[0]}"
             ex3 = f"count by {cat_cols[0]}"
             e1, e2, e3 = st.columns(3)
-            if e1.button(f"{ex1}", use_container_width=True): query = ex1
-            if e2.button(f"{ex2}", use_container_width=True): query = ex2
-            if e3.button(f"{ex3}", use_container_width=True): query = ex3
+            if e1.button(f"📊 {ex1}", use_container_width=True): query = ex1
+            if e2.button(f"📈 {ex2}", use_container_width=True): query = ex2
+            if e3.button(f"🔢 {ex3}", use_container_width=True): query = ex3
 
         if query:
             op, target, group = parse_query(query, filtered_df)
@@ -718,7 +773,7 @@ if raw_df is not None:
 
             if error:
                 st.error(f"❌ {error}")
-                st.info("Try queries like: 'average [column] by [column]', 'total [column]', 'count by [column]'")
+                st.info("💡 Try queries like: 'average [column] by [column]', 'total [column]', 'count by [column]'")
             else:
                 st.success(f"✅ {query_desc}")
 
@@ -765,7 +820,7 @@ if raw_df is not None:
     # =====================================================
 
     with tab5:
-        st.subheader("ML Prediction")
+        st.subheader("🤖 ML Prediction")
 
         all_targets = filtered_df.columns.tolist()
         target      = st.selectbox("Select Target Column to Predict", all_targets)
@@ -774,12 +829,12 @@ if raw_df is not None:
             task_hint = detect_task_type(filtered_df[target])
             st.caption(f"Detected task: **{task_hint}** — {'predicting a number' if task_hint == 'regression' else 'predicting a category'}")
 
-        if st.button("Train & Compare Models", type="primary"):
+        if st.button("🚀 Train & Compare Models", type="primary"):
             with st.spinner("Training multiple models and selecting the best one..."):
                 ml_result = train_prediction_model(filtered_df, target)
 
             if ml_result.get("error"):
-                st.error(f"{ml_result['error']}")
+                st.error(f"❌ {ml_result['error']}")
             else:
                 st.session_state["ml_result"] = ml_result
                 st.session_state["ml_target"] = target
@@ -790,7 +845,7 @@ if raw_df is not None:
             st.divider()
 
             # ── Best model banner ────────────────────────────────
-            st.success(f"Best Model: **{ml_result['best_model_name']}** | Task: {ml_result['task_type'].title()}")
+            st.success(f"🏆 Best Model: **{ml_result['best_model_name']}** | Task: {ml_result['task_type'].title()}")
 
             # ── Metrics ──────────────────────────────────────────
             metrics = ml_result["metrics"]
@@ -806,12 +861,12 @@ if raw_df is not None:
             col_cmp, col_imp = st.columns(2)
 
             with col_cmp:
-                st.subheader("Model Comparison")
+                st.subheader("📊 Model Comparison")
                 cmp_df = pd.DataFrame(ml_result["model_comparison"])
                 st.dataframe(cmp_df, use_container_width=True, hide_index=True)
 
             with col_imp:
-                st.subheader("Feature Importance")
+                st.subheader("🎯 Feature Importance")
                 if ml_result["feature_importance"]:
                     imp_df = pd.DataFrame(ml_result["feature_importance"]).head(10)
                     fig_imp = px.bar(
@@ -832,7 +887,7 @@ if raw_df is not None:
             st.divider()
 
             # ── Predict on new input ─────────────────────────────
-            st.subheader("Make a Prediction")
+            st.subheader("🔮 Make a Prediction")
             st.caption("Fill in the values below to predict the target.")
 
             feature_names  = ml_result["feature_names"]
@@ -864,7 +919,7 @@ if raw_df is not None:
                         key=f"ml_input_{feat}"
                     )
 
-            if st.button("Predict", type="primary"):
+            if st.button("🎯 Predict", type="primary"):
                 try:
                     pred = predict_single(ml_result, input_values)
                     if ml_result["task_type"] == "regression":
@@ -882,31 +937,193 @@ if raw_df is not None:
     # =====================================================
 
     with tab6:
-        st.subheader("AI Auto Dashboard")
+        st.subheader("⚡ Hybrid Auto Dashboard")
 
-        # KPIs
+        # ── Session state init ────────────────────────────────────
+        if "dashboard_charts" not in st.session_state:
+            st.session_state["dashboard_charts"] = []
+        if "saved_reports" not in st.session_state:
+            st.session_state["saved_reports"] = {}
+        if "dashboard_generated" not in st.session_state:
+            st.session_state["dashboard_generated"] = False
+
+        # ── KPIs ─────────────────────────────────────────────────
         metrics     = generate_kpis(filtered_df)
         metric_keys = list(metrics.keys())
-
-        if len(metric_keys) >= 4:
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric(metric_keys[0], metrics[metric_keys[0]])
-            c2.metric(metric_keys[1], metrics[metric_keys[1]])
-            c3.metric(metric_keys[2], metrics[metric_keys[2]])
-            c4.metric(metric_keys[3], metrics[metric_keys[3]])
+        n_kpi       = min(len(metric_keys), 5)
+        kpi_cols    = st.columns(n_kpi)
+        for i in range(n_kpi):
+            kpi_cols[i].metric(metric_keys[i], metrics[metric_keys[i]])
 
         st.divider()
 
-        # Auto Charts
-        st.subheader("Auto Generated Charts")
-        charts = generate_auto_charts(filtered_df)
-        for fig in charts:
-            st.plotly_chart(fig, use_container_width=True)
+        # ── Generate / Regenerate auto charts ────────────────────
+        col_gen, col_clr = st.columns([2, 1])
+        with col_gen:
+            if st.button("🔄 Generate Auto Charts", type="primary"):
+                auto_charts = generate_auto_charts(filtered_df)
+                # Merge: keep studio charts, replace auto charts
+                studio_charts = [
+                    c for c in st.session_state["dashboard_charts"]
+                    if c.get("source") == "studio"
+                ]
+                # Convert fig objects to JSON for memory efficiency
+                for c in auto_charts:
+                    if "fig" in c and "fig_json" not in c:
+                        c["fig_json"] = _fig_to_json(c["fig"])
+                        del c["fig"]
+                st.session_state["dashboard_charts"] = auto_charts + studio_charts
+                st.session_state["dashboard_generated"] = True
+        with col_clr:
+            if st.button("🗑️ Clear All Charts"):
+                st.session_state["dashboard_charts"] = []
+                st.session_state["dashboard_generated"] = False
+
+        # Auto-generate on first load
+        if not st.session_state["dashboard_generated"] and len(filtered_df) > 0:
+            with st.spinner("Generating charts..."):
+                auto_charts = generate_auto_charts(filtered_df)
+            studio_charts = [
+                c for c in st.session_state["dashboard_charts"]
+                if c.get("source") == "studio"
+            ]
+            for c in auto_charts:
+                if "fig" in c and "fig_json" not in c:
+                    c["fig_json"] = _fig_to_json(c["fig"])
+                    del c["fig"]
+            st.session_state["dashboard_charts"] = auto_charts + studio_charts
+            st.session_state["dashboard_generated"] = True
+
+        # ── Chart grid with pin / remove controls ─────────────────
+        all_charts = st.session_state.get("dashboard_charts", [])
+
+        if all_charts:
+            st.subheader(f"📊 Dashboard Charts ({len(all_charts)} total)")
+
+            # Two charts per row
+            pinned_ids = set()
+            for idx in range(0, len(all_charts), 2):
+                row_charts = all_charts[idx: idx + 2]
+                cols       = st.columns(len(row_charts))
+
+                for col_ui, chart in zip(cols, row_charts):
+                    with col_ui:
+                        # Source badge
+                        badge = "🤖 Auto" if chart.get("source") == "auto" else "🎨 Studio"
+                        pin_label = "📌 Pinned" if chart.get("pinned", True) else "📍 Unpinned"
+
+                        # Title bar
+                        t_col, p_col, d_col = st.columns([3, 1, 1])
+                        with t_col:
+                            st.caption(f"{badge}  |  {chart['title']}")
+                        with p_col:
+                            is_pinned = chart.get("pinned", True)
+                            if st.button(
+                                "📌" if is_pinned else "📍",
+                                key=f"pin_{chart['id']}",
+                                help="Click to unpin / pin from report",
+                            ):
+                                chart["pinned"] = not is_pinned
+                        with d_col:
+                            if st.button("✕", key=f"del_{chart['id']}", help="Remove chart"):
+                                st.session_state["dashboard_charts"] = [
+                                    c for c in all_charts if c["id"] != chart["id"]
+                                ]
+                                st.rerun()
+
+                        _fig = _json_to_fig(chart["fig_json"]) if "fig_json" in chart else chart.get("fig")
+                        if _fig:
+                            st.plotly_chart(_fig, use_container_width=True, key=f"dchart_{chart['id']}")
+
+                        if chart.get("pinned", True):
+                            pinned_ids.add(chart["id"])
+
+            st.divider()
+
+            # ── Save Report ───────────────────────────────────────
+            st.subheader("💾 Save Report")
+            pinned_charts = [c for c in all_charts if c.get("pinned", True)]
+            st.caption(f"{len(pinned_charts)} pinned chart(s) will be saved in the report.")
+
+            r_col1, r_col2 = st.columns([3, 1])
+            with r_col1:
+                report_name = st.text_input(
+                    "Report name",
+                    placeholder="e.g. Sales Q1 Analysis",
+                    key="report_name_input",
+                )
+            with r_col2:
+                st.write("")
+                st.write("")
+                if st.button("💾 Save Report", type="primary"):
+                    if not report_name.strip():
+                        st.warning("Please enter a report name.")
+                    elif not pinned_charts:
+                        st.warning("Pin at least one chart before saving.")
+                    else:
+                        st.session_state["saved_reports"][report_name.strip()] = {
+                            "charts":   pinned_charts,
+                            "insights": generate_insights(filtered_df),
+                            "kpis":     metrics,
+                        }
+                        st.success(f"✅ Report **'{report_name}'** saved with {len(pinned_charts)} chart(s)!")
+
+        else:
+            st.info("Click **Generate Auto Charts** to build your dashboard.")
 
         st.divider()
 
-        # AI Insights
-        st.subheader("AI Insights")
+        # ── Saved Reports viewer ──────────────────────────────────
+        saved = st.session_state.get("saved_reports", {})
+        if saved:
+            st.subheader("📁 Saved Reports")
+            report_choice = st.selectbox(
+                "Select a saved report to view",
+                list(saved.keys()),
+                key="report_select",
+            )
+
+            if report_choice and report_choice in saved:
+                rpt = saved[report_choice]
+
+                # KPI row
+                rpt_kpis = rpt.get("kpis", {})
+                rpt_keys = list(rpt_kpis.keys())[:5]
+                if rpt_keys:
+                    r_cols = st.columns(len(rpt_keys))
+                    for i, k in enumerate(rpt_keys):
+                        r_cols[i].metric(k, rpt_kpis[k])
+
+                st.divider()
+
+                # Charts grid
+                rpt_charts = rpt.get("charts", [])
+                for idx in range(0, len(rpt_charts), 2):
+                    row = rpt_charts[idx: idx + 2]
+                    cols = st.columns(len(row))
+                    for col_ui, chart in zip(cols, row):
+                        with col_ui:
+                            badge = "🤖" if chart.get("source") == "auto" else "🎨"
+                            st.caption(f"{badge} {chart['title']}")
+                            _fig = _json_to_fig(chart["fig_json"]) if "fig_json" in chart else chart.get("fig")
+                            if _fig:
+                                st.plotly_chart(_fig, use_container_width=True, key=f"rpt_{report_choice}_{chart['id']}")
+
+                st.divider()
+
+                # Insights
+                st.subheader("💡 Insights")
+                for ins in rpt.get("insights", []):
+                    st.info(ins)
+
+                # Delete report
+                if st.button(f"🗑️ Delete Report '{report_choice}'"):
+                    del st.session_state["saved_reports"][report_choice]
+                    st.rerun()
+
+        # ── AI Insights (live) ────────────────────────────────────
+        st.divider()
+        st.subheader("💡 Live AI Insights")
         insights = generate_insights(filtered_df)
-        for insight in insights:
-            st.success(insight)
+        for ins in insights:
+            st.info(ins)
