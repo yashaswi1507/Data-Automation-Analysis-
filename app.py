@@ -679,15 +679,71 @@ if raw_df is not None:
     # =====================================================
 
     with tab4:
-        st.subheader("Ask Questions About Your Data")
-        query = st.text_input("Enter Query (e.g. 'average salary by department')")
+        st.subheader("🔍 Query Engine")
+        st.caption("Ask questions in plain English — e.g. 'average salary by department', 'total sales per region', 'count of students by gender'")
+
+        query = st.text_input("Ask a question about your data", placeholder="e.g. average math score by gender")
+
+        # Quick example buttons
+        example_cols = filtered_df.select_dtypes(include="number").columns.tolist()
+        cat_cols     = filtered_df.select_dtypes(exclude="number").columns.tolist()
+        if example_cols and cat_cols:
+            ex1 = f"average {example_cols[0]} by {cat_cols[0]}"
+            ex2 = f"maximum {example_cols[0]}"
+            ex3 = f"count by {cat_cols[0]}"
+            e1, e2, e3 = st.columns(3)
+            if e1.button(f"📊 {ex1}", use_container_width=True): query = ex1
+            if e2.button(f"📈 {ex2}", use_container_width=True): query = ex2
+            if e3.button(f"🔢 {ex3}", use_container_width=True): query = ex3
+
         if query:
             op, target, group = parse_query(query, filtered_df)
-            result = execute_query(filtered_df, op, target, group)
-            st.write(result)
-            insight = generate_query_insight(result, target, group)
-            if insight:
-                st.info(insight)
+            result_dict       = execute_query(filtered_df, op, target, group)
+            error             = result_dict.get("error")
+            result            = result_dict.get("result")
+            query_desc        = result_dict.get("query_desc","")
+
+            st.divider()
+
+            if error:
+                st.error(f"❌ {error}")
+                st.info("💡 Try queries like: 'average [column] by [column]', 'total [column]', 'count by [column]'")
+            else:
+                st.success(f"✅ {query_desc}")
+
+                # Show result
+                if isinstance(result, pd.Series):
+                    result_df = result.reset_index()
+                    result_df.columns = [group, f"{op}({target})"]
+                    result_df = result_df.sort_values(f"{op}({target})", ascending=False)
+
+                    # Table + chart side by side
+                    col_tbl, col_chart = st.columns([1, 2])
+                    with col_tbl:
+                        st.dataframe(result_df, use_container_width=True, hide_index=True)
+                    with col_chart:
+                        fig = px.bar(
+                            result_df,
+                            x=group,
+                            y=f"{op}({target})",
+                            color=group,
+                            template="plotly_white",
+                            color_discrete_sequence=px.colors.qualitative.Set2,
+                            text_auto=".2s",
+                        )
+                        fig.update_layout(showlegend=False, height=350, xaxis_tickangle=-30)
+                        fig.update_traces(textposition="outside")
+                        st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.metric(label=query_desc, value=result_dict["result"] if isinstance(result_dict["result"], str) else f"{float(result_dict['result']):,.2f}")
+
+                # Insights
+                insights = generate_query_insight(result_dict, target, group)
+                if insights:
+                    st.divider()
+                    st.subheader("💡 Insights")
+                    for ins in insights:
+                        st.info(ins)
 
     # =====================================================
     # TAB 5 — ML PREDICTION
