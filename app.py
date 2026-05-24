@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup
 from eda import show_summary
 from preprocessing import DataPreprocessor
 from query_engine import parse_query, execute_query, generate_query_insight
-from ml_engine import train_prediction_model
+from ml_engine import train_prediction_model, detect_task_type, predict_single
 from dashboard_generator import generate_kpis, generate_auto_charts, generate_insights
 
 # =========================================================
@@ -766,8 +766,6 @@ if raw_df is not None:
 
     with tab5:
         st.subheader("🤖 ML Prediction")
-
-        from ml_engine import detect_task_type, predict_single
 
         all_targets = filtered_df.columns.tolist()
         target      = st.selectbox("Select Target Column to Predict", all_targets)
