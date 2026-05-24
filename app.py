@@ -765,32 +765,119 @@ if raw_df is not None:
     # =====================================================
 
     with tab5:
-        st.subheader("Machine Learning Prediction")
+        st.subheader("🤖 ML Prediction")
 
-        numeric_targets = filtered_df.select_dtypes(include="number").columns.tolist()
+        from ml_engine import detect_task_type, predict_single
 
-        if numeric_targets:
-            target = st.selectbox("Select Target Column", numeric_targets)
+        all_targets = filtered_df.columns.tolist()
+        target      = st.selectbox("Select Target Column to Predict", all_targets)
 
-            if st.button("Train Model"):
-                model, score = train_prediction_model(filtered_df, target)
-                if model:
-                    st.success(f"✅ Model Trained | R² Score: {score:.2f}")
+        if target:
+            task_hint = detect_task_type(filtered_df[target])
+            st.caption(f"Detected task: **{task_hint}** — {'predicting a number' if task_hint == 'regression' else 'predicting a category'}")
 
-                    st.subheader("Make a Prediction")
-                    input_data = {}
-                    for col in numeric_targets:
-                        if col != target:
-                            input_data[col] = st.number_input(f"Enter {col}", value=0.0)
+        if st.button("🚀 Train & Compare Models", type="primary"):
+            with st.spinner("Training multiple models and selecting the best one..."):
+                ml_result = train_prediction_model(filtered_df, target)
 
-                    if st.button("Predict"):
-                        input_df   = pd.DataFrame([input_data])
-                        prediction = model.predict(input_df)
-                        st.success(f"🎯 Predicted {target}: {prediction[0]:.2f}")
+            if ml_result.get("error"):
+                st.error(f"❌ {ml_result['error']}")
+            else:
+                st.session_state["ml_result"] = ml_result
+                st.session_state["ml_target"] = target
+
+        if "ml_result" in st.session_state and st.session_state.get("ml_target") == target:
+            ml_result = st.session_state["ml_result"]
+
+            st.divider()
+
+            # ── Best model banner ────────────────────────────────
+            st.success(f"🏆 Best Model: **{ml_result['best_model_name']}** | Task: {ml_result['task_type'].title()}")
+
+            # ── Metrics ──────────────────────────────────────────
+            metrics = ml_result["metrics"]
+            metric_cols = st.columns(len(metrics))
+            for i, (k, v) in enumerate(metrics.items()):
+                metric_cols[i].metric(k, f"{v:.4f}")
+
+            st.caption(f"Trained on {ml_result['n_train']} rows, tested on {ml_result['n_test']} rows | {ml_result['cv_folds']}-fold cross-validation")
+
+            st.divider()
+
+            # ── Model comparison table + chart ───────────────────
+            col_cmp, col_imp = st.columns(2)
+
+            with col_cmp:
+                st.subheader("📊 Model Comparison")
+                cmp_df = pd.DataFrame(ml_result["model_comparison"])
+                st.dataframe(cmp_df, use_container_width=True, hide_index=True)
+
+            with col_imp:
+                st.subheader("🎯 Feature Importance")
+                if ml_result["feature_importance"]:
+                    imp_df = pd.DataFrame(ml_result["feature_importance"]).head(10)
+                    fig_imp = px.bar(
+                        imp_df.sort_values("Importance"),
+                        x="Importance", y="Feature",
+                        orientation="h",
+                        template="plotly_white",
+                        color="Importance",
+                        color_continuous_scale="Blues",
+                        text_auto=".1f",
+                    )
+                    fig_imp.update_layout(height=350, showlegend=False, coloraxis_showscale=False)
+                    fig_imp.update_traces(textposition="outside")
+                    st.plotly_chart(fig_imp, use_container_width=True)
                 else:
-                    st.error("Model training failed. Check your data.")
-        else:
-            st.warning("No numeric columns found for prediction.")
+                    st.info("Feature importance not available for this model.")
+
+            st.divider()
+
+            # ── Predict on new input ─────────────────────────────
+            st.subheader("🔮 Make a Prediction")
+            st.caption("Fill in the values below to predict the target.")
+
+            feature_names  = ml_result["feature_names"]
+            label_encoders = ml_result["label_encoders"]
+            input_values   = {}
+
+            # Dynamic input form — 3 columns for clean layout
+            n_feats  = len(feature_names)
+            n_cols   = min(3, n_feats)
+            form_cols = st.columns(n_cols)
+
+            for i, feat in enumerate(feature_names):
+                col_ui = form_cols[i % n_cols]
+                if feat in label_encoders:
+                    # Categorical — show selectbox with known classes
+                    classes = list(label_encoders[feat].classes_)
+                    input_values[feat] = col_ui.selectbox(feat, classes, key=f"ml_input_{feat}")
+                else:
+                    # Numeric — show number input with sensible default
+                    col_data   = filtered_df[feat].dropna()
+                    default_val = float(col_data.median()) if len(col_data) > 0 else 0.0
+                    min_val    = float(col_data.min())    if len(col_data) > 0 else 0.0
+                    max_val    = float(col_data.max())    if len(col_data) > 0 else 100.0
+                    input_values[feat] = col_ui.number_input(
+                        feat,
+                        value=default_val,
+                        min_value=min_val,
+                        max_value=max_val,
+                        key=f"ml_input_{feat}"
+                    )
+
+            if st.button("🎯 Predict", type="primary"):
+                try:
+                    pred = predict_single(ml_result, input_values)
+                    if ml_result["task_type"] == "regression":
+                        try:
+                            st.success(f"### Predicted **{target}**: `{float(pred):,.2f}`")
+                        except Exception:
+                            st.success(f"### Predicted **{target}**: `{pred}`")
+                    else:
+                        st.success(f"### Predicted **{target}**: `{pred}`")
+                except Exception as e:
+                    st.error(f"Prediction failed: {e}")
 
     # =====================================================
     # TAB 6 — AUTO DASHBOARD
