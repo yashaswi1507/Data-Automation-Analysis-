@@ -401,23 +401,11 @@ if raw_df is not None:
     # =====================================================
 
     with tab2:
-        st.subheader("Statistical Summary")
-        summary_df = filtered_df.describe(include=[float, int]).fillna("-")
-        st.dataframe(summary_df, use_container_width=True)
-
-        # Column type breakdown
-        st.subheader("Column Profiles")
-        if column_profiles:
-            profile_rows = []
-            for col, p in column_profiles.items():
-                profile_rows.append({
-                    "Column":        col,
-                    "Detected Type": p.get("detected_type",""),
-                    "Fill Strategy": p.get("cleaning_strategy",""),
-                    "Missing %":     f"{p.get('missing_percent',0):.1f}%",
-                    "Unique Count":  p.get("unique_count",""),
-                })
-            st.dataframe(pd.DataFrame(profile_rows), use_container_width=True, hide_index=True)
+        raw_tab, clean_tab = st.tabs(["🔴 Raw Data", "✅ Cleaned Data"])
+        with raw_tab:
+            show_summary(raw_df, st)
+        with clean_tab:
+            show_summary(filtered_df, st)
 
     # =====================================================
     # TAB 3 — VISUALIZATION STUDIO
