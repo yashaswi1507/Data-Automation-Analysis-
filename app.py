@@ -816,6 +816,49 @@ if raw_df is not None:
                     for ins in insights:
                         st.info(ins)
 
+                # Send to Dashboard
+                if st.button("📤 Send to Auto Dashboard", key=f"query_to_dash_{query}"):
+                    if "dashboard_charts" not in st.session_state:
+                        st.session_state["dashboard_charts"] = []
+
+                    # Build chart from result
+                    if isinstance(result, pd.Series) and len(result) > 0:
+                        q_df   = result.reset_index()
+                        q_df.columns = [group, f"{op}({target})"]
+                        fig_q  = px.bar(
+                            q_df.sort_values(f"{op}({target})", ascending=False),
+                            x=group, y=f"{op}({target})",
+                            color=group,
+                            template="plotly_white",
+                            color_discrete_sequence=px.colors.qualitative.Set2,
+                            text_auto=".2s",
+                            title=query_desc,
+                        )
+                        fig_q.update_layout(showlegend=False, height=380, xaxis_tickangle=-30)
+                        fig_q.update_traces(textposition="outside")
+
+                        chart_entry = {
+                            "id":         int(pd.Timestamp.now().timestamp() * 1000),
+                            "title":      f"🔍 {query_desc}",
+                            "fig_json":   fig_q.to_json(),
+                            "chart_type": "bar",
+                            "pinned":     True,
+                            "source":     "query",
+                        }
+                        existing = {c["title"] for c in st.session_state["dashboard_charts"]}
+                        if chart_entry["title"] not in existing:
+                            st.session_state["dashboard_charts"].append(chart_entry)
+
+                    # Store query insight
+                    if "dashboard_query_insights" not in st.session_state:
+                        st.session_state["dashboard_query_insights"] = []
+                    q_ins = f"🔍 Query: '{query}' → {query_desc}"
+                    if insights:
+                        q_ins += " | " + " | ".join([i.replace("**","").replace("*","") for i in insights])
+                    st.session_state["dashboard_query_insights"].append(q_ins)
+
+                    st.success("✅ Sent to **⚡ Auto Dashboard**! Go there to review and save to report.")
+
     # =====================================================
     # TAB 5 — ML PREDICTION
     # =====================================================
@@ -923,15 +966,105 @@ if raw_df is not None:
             if st.button("🎯 Predict", type="primary"):
                 try:
                     pred = predict_single(ml_result, input_values)
-                    if ml_result["task_type"] == "regression":
-                        try:
-                            st.success(f"### Predicted **{target}**: `{float(pred):,.2f}`")
-                        except Exception:
-                            st.success(f"### Predicted **{target}**: `{pred}`")
-                    else:
-                        st.success(f"### Predicted **{target}**: `{pred}`")
+
+                    # Format prediction
+                    try:
+                        pred_display = f"{float(pred):,.2f}" if ml_result["task_type"] == "regression" else str(pred)
+                    except:
+                        pred_display = str(pred)
+
+                    st.success(f"### Predicted **{target}**: `{pred_display}`")
+
+                    # Store prediction in session state
+                    st.session_state["last_prediction"] = {
+                        "target":        target,
+                        "prediction":    pred_display,
+                        "input_values":  dict(input_values),
+                        "model_name":    ml_result["best_model_name"],
+                        "task_type":     ml_result["task_type"],
+                        "metrics":       ml_result["metrics"],
+                        "feature_importance": ml_result["feature_importance"][:8],
+                        "model_comparison":   ml_result["model_comparison"],
+                    }
+
                 except Exception as e:
                     st.error(f"Prediction failed: {e}")
+
+            # ── Send Prediction to Auto Dashboard ────────────────
+            if "last_prediction" in st.session_state and st.session_state.get("ml_target") == target:
+                lp = st.session_state["last_prediction"]
+
+                st.divider()
+                if st.button("📤 Send to Auto Dashboard", key="ml_to_dashboard", type="primary"):
+                    if "dashboard_charts" not in st.session_state:
+                        st.session_state["dashboard_charts"] = []
+
+                    new_charts = []
+
+                    # Feature importance chart
+                    if lp["feature_importance"]:
+                        imp_df  = pd.DataFrame(lp["feature_importance"])
+                        fig_imp = px.bar(
+                            imp_df.sort_values("Importance"),
+                            x="Importance", y="Feature",
+                            orientation="h",
+                            template="plotly_white",
+                            color="Importance",
+                            color_continuous_scale="Blues",
+                            text_auto=".1f",
+                            title=f"Feature Importance — {target}",
+                        )
+                        fig_imp.update_layout(height=350, showlegend=False, coloraxis_showscale=False)
+                        new_charts.append({
+                            "id":         int(pd.Timestamp.now().timestamp() * 1000),
+                            "title":      f"🤖 Feature Importance — {target}",
+                            "fig_json":   fig_imp.to_json(),
+                            "chart_type": "bar",
+                            "pinned":     True,
+                            "source":     "ml",
+                        })
+
+                    # Model comparison chart
+                    cmp_df  = pd.DataFrame(lp["model_comparison"])
+                    fig_cmp = px.bar(
+                        cmp_df.sort_values("CV Score (mean)", ascending=True),
+                        x="CV Score (mean)", y="Model",
+                        orientation="h",
+                        template="plotly_white",
+                        color="CV Score (mean)",
+                        color_continuous_scale="Greens",
+                        text_auto=".3f",
+                        title="Model Comparison (CV Score)",
+                    )
+                    fig_cmp.update_layout(height=300, showlegend=False, coloraxis_showscale=False)
+                    new_charts.append({
+                        "id":         int(pd.Timestamp.now().timestamp() * 1000) + 1,
+                        "title":      "🤖 Model Comparison",
+                        "fig_json":   fig_cmp.to_json(),
+                        "chart_type": "bar",
+                        "pinned":     True,
+                        "source":     "ml",
+                    })
+
+                    # Store ML metadata as dashboard insight
+                    input_str = ", ".join([f"{k}={v}" for k,v in lp["input_values"].items()])
+                    ml_insight = (
+                        f"🎯 ML Prediction — {lp['target']} = {lp['prediction']} "
+                        f"| Model: {lp['model_name']} "
+                        f"| {', '.join([f'{k}: {v:.4f}' for k,v in lp['metrics'].items()])} "
+                        f"| Inputs: {input_str}"
+                    )
+                    if "dashboard_ml_insights" not in st.session_state:
+                        st.session_state["dashboard_ml_insights"] = []
+                    st.session_state["dashboard_ml_insights"].append(ml_insight)
+
+                    # Add to dashboard (avoid duplicates by title)
+                    existing_titles = {c["title"] for c in st.session_state["dashboard_charts"]}
+                    for c in new_charts:
+                        if c["title"] not in existing_titles:
+                            st.session_state["dashboard_charts"].append(c)
+
+                    st.success("✅ Sent to **⚡ Auto Dashboard**! Go there to review and save to report.")
 
     # =====================================================
     # TAB 6 — AUTO DASHBOARD
@@ -947,6 +1080,10 @@ if raw_df is not None:
             st.session_state["saved_reports"] = {}
         if "dashboard_generated" not in st.session_state:
             st.session_state["dashboard_generated"] = False
+        if "dashboard_ml_insights" not in st.session_state:
+            st.session_state["dashboard_ml_insights"] = []
+        if "dashboard_query_insights" not in st.session_state:
+            st.session_state["dashboard_query_insights"] = []
 
         # ── KPIs ─────────────────────────────────────────────────
         metrics     = generate_kpis(filtered_df)
@@ -1062,9 +1199,15 @@ if raw_df is not None:
                     elif not pinned_charts:
                         st.warning("Pin at least one chart before saving.")
                     else:
+                        # Combine all insights
+                        all_insights = (
+                            st.session_state.get("dashboard_ml_insights", []) +
+                            st.session_state.get("dashboard_query_insights", []) +
+                            generate_insights(filtered_df)
+                        )
                         st.session_state["saved_reports"][report_name.strip()] = {
                             "charts":   pinned_charts,
-                            "insights": generate_insights(filtered_df),
+                            "insights": all_insights,
                             "kpis":     metrics,
                         }
                         st.success(f"✅ Report **'{report_name}'** saved with {len(pinned_charts)} chart(s)!")
@@ -1074,11 +1217,35 @@ if raw_df is not None:
 
         st.divider()
 
-        # ── AI Insights (live) ────────────────────────────────────
-        st.subheader("💡 Live AI Insights")
-        insights = generate_insights(filtered_df)
-        for ins in insights:
+        # ── AI Insights (live + ML + Query) ──────────────────────
+        st.subheader("💡 Insights")
+
+        # ML prediction insights
+        ml_ins_list = st.session_state.get("dashboard_ml_insights", [])
+        if ml_ins_list:
+            st.markdown("**🤖 ML Predictions**")
+            for ins in ml_ins_list:
+                st.success(ins)
+
+        # Query insights
+        q_ins_list = st.session_state.get("dashboard_query_insights", [])
+        if q_ins_list:
+            st.markdown("**🔍 Query Results**")
+            for ins in q_ins_list:
+                st.info(ins)
+
+        # Auto insights
+        st.markdown("**📊 Data Insights**")
+        auto_insights = generate_insights(filtered_df)
+        for ins in auto_insights:
             st.info(ins)
+
+        # Clear insights button
+        if ml_ins_list or q_ins_list:
+            if st.button("🗑️ Clear ML & Query Insights"):
+                st.session_state["dashboard_ml_insights"]    = []
+                st.session_state["dashboard_query_insights"] = []
+                st.rerun()
 
     # =====================================================
     # TAB 7 — MY REPORTS  (Power BI style)
