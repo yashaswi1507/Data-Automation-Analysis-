@@ -401,11 +401,7 @@ if raw_df is not None:
     # =====================================================
 
     with tab2:
-        raw_tab, clean_tab = st.tabs(["🔴 Raw Data", "✅ Cleaned Data"])
-        with raw_tab:
-            show_summary(raw_df, st)
-        with clean_tab:
-            show_summary(filtered_df, st)
+        show_summary(filtered_df, st)
 
     # =====================================================
     # TAB 3 — VISUALIZATION STUDIO
