@@ -50,6 +50,110 @@ def _save_to_dashboard_btn(fig, title, chart_type, all_charts_count=0):
             })
             st.toast(f"✅ '{title}' saved to Auto Dashboard!", icon="📌")
 
+
+def _suggest_target_column(df):
+    """
+    Suggest the best target column for ML prediction.
+    Purely data-driven — no column name assumptions.
+    Returns (column_name, reason) or (None, "").
+    """
+    import pandas as pd
+    import numpy as np
+
+    if df.empty or df.shape[1] < 2:
+        return None, ""
+
+    numeric_cols     = df.select_dtypes(include="number").columns.tolist()
+    categorical_cols = df.select_dtypes(exclude="number").columns.tolist()
+    n_rows           = len(df)
+
+    candidates = []
+
+    for col in df.columns:
+        s         = df[col].dropna()
+        n_unique  = s.nunique()
+        miss_pct  = df[col].isnull().mean()
+        score     = 0
+        reasons   = []
+
+        # Skip if too many missing values
+        if miss_pct > 0.4:
+            continue
+
+        # Skip if constant column
+        if n_unique <= 1:
+            continue
+
+        if pd.api.types.is_numeric_dtype(s):
+            # Prefer columns with meaningful variance
+            cv = s.std() / s.mean() if s.mean() != 0 else 0
+
+            # Prefer bounded range columns (scores, rates, counts)
+            value_range  = float(s.max() - s.min())
+            whole_frac   = (s == s.round()).mean()
+
+            if whole_frac >= 0.85 and value_range <= 300:
+                score += 30
+                reasons.append("discrete numeric with bounded range")
+
+            if 0.1 < abs(cv) < 2.0:
+                score += 20
+                reasons.append("good variance")
+
+            # Prefer columns that correlate well with others
+            other_nums = [c for c in numeric_cols if c != col]
+            if other_nums:
+                try:
+                    corr_vals = df[other_nums + [col]].corr()[col].drop(col).abs()
+                    max_corr  = corr_vals.max()
+                    if max_corr > 0.3:
+                        score += 25
+                        reasons.append(f"correlates well with other columns (r={max_corr:.2f})")
+                except Exception:
+                    pass
+
+            # Strongly prefer columns at end of dataset (outcome variables are usually last)
+            col_idx   = df.columns.tolist().index(col)
+            col_total = len(df.columns)
+            if col_idx == col_total - 1:
+                score += 30
+                reasons.append("last column — usually the outcome/target variable")
+            elif col_idx >= col_total * 0.7:
+                score += 15
+                reasons.append("appears toward end of dataset (often outcome)")
+
+        else:
+            # Categorical target — classification
+            unique_ratio = n_unique / n_rows
+
+            # Best: 2-10 classes, balanced
+            if 2 <= n_unique <= 10:
+                score += 30
+                reasons.append(f"{n_unique} balanced classes — good for classification")
+
+            # Check class balance
+            if n_unique >= 2:
+                vc      = s.value_counts(normalize=True)
+                balance = 1 - vc.std()
+                if balance > 0.7:
+                    score += 15
+                    reasons.append("classes are balanced")
+
+        candidates.append((col, score, reasons))
+
+    if not candidates:
+        return None, ""
+
+    # Sort by score descending
+    candidates.sort(key=lambda x: x[1], reverse=True)
+    best_col, best_score, best_reasons = candidates[0]
+
+    if best_score == 0:
+        return None, ""
+
+    reason_str = " | ".join(best_reasons[:2]) if best_reasons else "good candidate"
+    return best_col, reason_str
+
 # =========================================================
 # PAGE CONFIG
 # =========================================================
@@ -898,7 +1002,20 @@ if raw_df is not None:
             st.warning("No columns found. Please upload a valid dataset.")
             target = None
         else:
-            target = st.selectbox("Select Target Column to Predict", all_targets)
+            # ── Smart column suggestion ───────────────────────
+            suggested, suggest_reason = _suggest_target_column(filtered_df)
+
+            if suggested:
+                st.info(f"💡 **Suggested target:** `{suggested}`  |  {suggest_reason}  |  You can change this below.")
+                default_idx = all_targets.index(suggested) if suggested in all_targets else 0
+            else:
+                default_idx = 0
+
+            target = st.selectbox(
+                "Select Target Column to Predict",
+                all_targets,
+                index=default_idx,
+            )
 
         if target:
             task_hint = detect_task_type(filtered_df[target])
@@ -1014,109 +1131,125 @@ if raw_df is not None:
                         col_data = filtered_df[target].dropna()
 
                         if ml_result["task_type"] == "regression":
-                            pred_val = float(pred)
-                            col_min  = float(col_data.min())
-                            col_max  = float(col_data.max())
-                            col_mean = float(col_data.mean())
-                            col_std  = float(col_data.std())
-
-                            # Percentile of prediction in actual data
+                            pred_val   = float(pred)
+                            col_min    = float(col_data.min())
+                            col_max    = float(col_data.max())
+                            col_mean   = float(col_data.mean())
+                            col_std    = float(col_data.std())
+                            col_range  = col_max - col_min
                             percentile = float((col_data < pred_val).mean() * 100)
 
-                            # Range-based interpretation
-                            col_range = col_max - col_min
+                            st.divider()
+                            st.subheader("🧠 Result Interpretation")
+
+                            # User defines what HIGH means for this column
+                            high_means = st.radio(
+                                f"For **{target}**, a HIGH value means:",
+                                ["⚠️ Bad (e.g. Risk, Error, Loss, Debt)",
+                                 "✅ Good (e.g. Sales, Score, Profit, Performance)"],
+                                horizontal=True,
+                                key="high_means_radio",
+                            )
+                            bad_is_high = "Bad" in high_means
+
+                            # Compute zone
                             if col_range > 0:
                                 low_thresh  = col_min + col_range * 0.33
                                 high_thresh = col_min + col_range * 0.67
 
                                 if pred_val <= low_thresh:
-                                    level       = "🟢 Low"
-                                    level_color = "success"
+                                    zone = "Low"
                                 elif pred_val <= high_thresh:
-                                    level       = "🟡 Medium"
-                                    level_color = "warning"
+                                    zone = "Medium"
                                 else:
-                                    level       = "🔴 High"
-                                    level_color = "error"
+                                    zone = "High"
                             else:
-                                level       = "🟡 Medium"
-                                level_color = "warning"
+                                zone = "Medium"
 
-                            # Z-score interpretation
-                            if col_std > 0:
-                                z = (pred_val - col_mean) / col_std
-                                if z < -1:
-                                    z_note = "significantly below average"
-                                elif z < -0.3:
-                                    z_note = "slightly below average"
-                                elif z < 0.3:
-                                    z_note = "close to average"
-                                elif z < 1:
-                                    z_note = "slightly above average"
-                                else:
-                                    z_note = "significantly above average"
+                            # Verdict depends on user's context
+                            if bad_is_high:
+                                verdict_map = {
+                                    "Low":    ("🟢 Low Risk",    "success", "This is a GOOD result — low concern."),
+                                    "Medium": ("🟡 Medium Risk", "warning", "This needs attention — moderate concern."),
+                                    "High":   ("🔴 High Risk",   "error",   "This is a BAD result — high concern, action needed."),
+                                }
                             else:
-                                z_note = "same as average"
+                                verdict_map = {
+                                    "Low":    ("🔴 Low Performance", "error",   "This is a POOR result — below expectations."),
+                                    "Medium": ("🟡 Average",         "warning", "This is an AVERAGE result — room for improvement."),
+                                    "High":   ("🟢 High Performance","success", "This is a GREAT result — above expectations."),
+                                }
 
-                            st.divider()
-                            st.subheader("🧠 What does this mean?")
+                            verdict_label, verdict_type, verdict_msg = verdict_map[zone]
 
+                            # Show metrics
                             i1, i2, i3 = st.columns(3)
-                            i1.metric("Range in Data",   f"{col_min:,.1f} – {col_max:,.1f}")
-                            i2.metric("Average",         f"{col_mean:,.2f}")
-                            i3.metric("Your Prediction", pred_display,
-                                      delta=f"{pred_val - col_mean:+,.2f} vs avg")
+                            i1.metric("Min in Dataset",  f"{col_min:,.2f}")
+                            i2.metric("Max in Dataset",  f"{col_max:,.2f}")
+                            i3.metric("Average",         f"{col_mean:,.2f}")
 
-                            # Progress bar showing where prediction falls
+                            # Verdict box
+                            msg = f"**{verdict_label}** — {verdict_msg}"
+                            if verdict_type == "success":
+                                st.success(msg)
+                            elif verdict_type == "warning":
+                                st.warning(msg)
+                            else:
+                                st.error(msg)
+
+                            # Progress bar
                             if col_range > 0:
-                                progress_val = min(max((pred_val - col_min) / col_range, 0), 1)
-                                st.markdown(f"**Position in range:** {level}")
+                                progress_val = min(max((pred_val - col_min) / col_range, 0.0), 1.0)
+                                st.markdown(f"**Where {pred_display} falls in the data range:**")
                                 st.progress(progress_val)
                                 st.caption(
-                                    f"Predicted value **{pred_display}** is in the "
-                                    f"**{level}** zone — {z_note} "
-                                    f"(higher than {percentile:.0f}% of actual data)"
+                                    f"📍 **{pred_display}** is higher than **{percentile:.0f}%** of all values in your dataset "
+                                    f"(range: {col_min:,.1f} → {col_max:,.1f})"
                                 )
 
                         else:
-                            # Classification — show class probabilities if available
+                            # Classification
                             st.divider()
-                            st.subheader("🧠 What does this mean?")
+                            st.subheader("🧠 Result Interpretation")
 
-                            vc = col_data.value_counts(normalize=True) * 100
-                            total_classes = len(vc)
+                            vc             = col_data.value_counts(normalize=True) * 100
+                            total_classes  = len(vc)
+                            vc_counts      = col_data.value_counts()
 
-                            st.markdown(f"Predicted class: **{pred_display}**")
+                            st.markdown(f"**Predicted:** `{pred_display}`")
 
                             if str(pred_display) in vc.index.astype(str).tolist():
-                                pred_freq = vc[vc.index.astype(str) == str(pred_display)].iloc[0]
-                                st.caption(
-                                    f"'{pred_display}' appears in **{pred_freq:.1f}%** of your training data "
-                                    f"(1 of {total_classes} classes)"
+                                pred_freq  = vc[vc.index.astype(str) == str(pred_display)].iloc[0]
+                                pred_count = vc_counts[vc_counts.index.astype(str) == str(pred_display)].iloc[0]
+                                st.info(
+                                    f"In your dataset, **{pred_freq:.1f}%** of people "
+                                    f"({int(pred_count)} out of {len(col_data)}) "
+                                    f"belong to the **'{pred_display}'** category."
                                 )
 
-                            # Show all class distribution
+                            # Class distribution bar chart
                             dist_df = vc.reset_index()
-                            dist_df.columns = [target, "% in Data"]
-                            dist_df["% in Data"] = dist_df["% in Data"].round(1)
-                            dist_df["Predicted"] = dist_df[target].astype(str) == str(pred_display)
+                            dist_df.columns = [target, "% in Dataset"]
+                            dist_df["% in Dataset"] = dist_df["% in Dataset"].round(1)
+                            dist_df["Is Predicted"]  = dist_df[target].astype(str) == str(pred_display)
 
                             fig_dist = px.bar(
-                                dist_df, x=target, y="% in Data",
-                                color="Predicted",
+                                dist_df,
+                                x=target, y="% in Dataset",
+                                color="Is Predicted",
                                 color_discrete_map={True: "#2ecc71", False: "#bdc3c7"},
                                 template="plotly_white",
                                 text_auto=".1f",
-                                title="Class Distribution in Training Data",
+                                title=f"Where '{pred_display}' sits among all {target} categories",
                             )
                             fig_dist.update_layout(
-                                height=300, showlegend=False, xaxis_tickangle=-30
+                                height=320, showlegend=False, xaxis_tickangle=-30
                             )
                             fig_dist.update_traces(textposition="outside")
                             st.plotly_chart(fig_dist, use_container_width=True)
 
                     except Exception:
-                        pass  # interpretation is bonus — don't crash if it fails
+                        pass
 
                     # Store prediction in session state
                     st.session_state["last_prediction"] = {
