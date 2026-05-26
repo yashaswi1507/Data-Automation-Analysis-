@@ -1009,6 +1009,115 @@ if raw_df is not None:
 
                     st.success(f"### Predicted **{target}**: `{pred_display}`")
 
+                    # ── Interpret the prediction ──────────────────────
+                    try:
+                        col_data = filtered_df[target].dropna()
+
+                        if ml_result["task_type"] == "regression":
+                            pred_val = float(pred)
+                            col_min  = float(col_data.min())
+                            col_max  = float(col_data.max())
+                            col_mean = float(col_data.mean())
+                            col_std  = float(col_data.std())
+
+                            # Percentile of prediction in actual data
+                            percentile = float((col_data < pred_val).mean() * 100)
+
+                            # Range-based interpretation
+                            col_range = col_max - col_min
+                            if col_range > 0:
+                                low_thresh  = col_min + col_range * 0.33
+                                high_thresh = col_min + col_range * 0.67
+
+                                if pred_val <= low_thresh:
+                                    level       = "🟢 Low"
+                                    level_color = "success"
+                                elif pred_val <= high_thresh:
+                                    level       = "🟡 Medium"
+                                    level_color = "warning"
+                                else:
+                                    level       = "🔴 High"
+                                    level_color = "error"
+                            else:
+                                level       = "🟡 Medium"
+                                level_color = "warning"
+
+                            # Z-score interpretation
+                            if col_std > 0:
+                                z = (pred_val - col_mean) / col_std
+                                if z < -1:
+                                    z_note = "significantly below average"
+                                elif z < -0.3:
+                                    z_note = "slightly below average"
+                                elif z < 0.3:
+                                    z_note = "close to average"
+                                elif z < 1:
+                                    z_note = "slightly above average"
+                                else:
+                                    z_note = "significantly above average"
+                            else:
+                                z_note = "same as average"
+
+                            st.divider()
+                            st.subheader("🧠 What does this mean?")
+
+                            i1, i2, i3 = st.columns(3)
+                            i1.metric("Range in Data",   f"{col_min:,.1f} – {col_max:,.1f}")
+                            i2.metric("Average",         f"{col_mean:,.2f}")
+                            i3.metric("Your Prediction", pred_display,
+                                      delta=f"{pred_val - col_mean:+,.2f} vs avg")
+
+                            # Progress bar showing where prediction falls
+                            if col_range > 0:
+                                progress_val = min(max((pred_val - col_min) / col_range, 0), 1)
+                                st.markdown(f"**Position in range:** {level}")
+                                st.progress(progress_val)
+                                st.caption(
+                                    f"Predicted value **{pred_display}** is in the "
+                                    f"**{level}** zone — {z_note} "
+                                    f"(higher than {percentile:.0f}% of actual data)"
+                                )
+
+                        else:
+                            # Classification — show class probabilities if available
+                            st.divider()
+                            st.subheader("🧠 What does this mean?")
+
+                            vc = col_data.value_counts(normalize=True) * 100
+                            total_classes = len(vc)
+
+                            st.markdown(f"Predicted class: **{pred_display}**")
+
+                            if str(pred_display) in vc.index.astype(str).tolist():
+                                pred_freq = vc[vc.index.astype(str) == str(pred_display)].iloc[0]
+                                st.caption(
+                                    f"'{pred_display}' appears in **{pred_freq:.1f}%** of your training data "
+                                    f"(1 of {total_classes} classes)"
+                                )
+
+                            # Show all class distribution
+                            dist_df = vc.reset_index()
+                            dist_df.columns = [target, "% in Data"]
+                            dist_df["% in Data"] = dist_df["% in Data"].round(1)
+                            dist_df["Predicted"] = dist_df[target].astype(str) == str(pred_display)
+
+                            fig_dist = px.bar(
+                                dist_df, x=target, y="% in Data",
+                                color="Predicted",
+                                color_discrete_map={True: "#2ecc71", False: "#bdc3c7"},
+                                template="plotly_white",
+                                text_auto=".1f",
+                                title="Class Distribution in Training Data",
+                            )
+                            fig_dist.update_layout(
+                                height=300, showlegend=False, xaxis_tickangle=-30
+                            )
+                            fig_dist.update_traces(textposition="outside")
+                            st.plotly_chart(fig_dist, use_container_width=True)
+
+                    except Exception:
+                        pass  # interpretation is bonus — don't crash if it fails
+
                     # Store prediction in session state
                     st.session_state["last_prediction"] = {
                         "target":        target,
