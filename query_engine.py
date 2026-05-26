@@ -193,6 +193,9 @@ def execute_query(df, op, target, group):
     Runs the query and returns a result (scalar or Series).
     Returns a dict with 'result', 'error', 'query_desc' keys.
     """
+    if df.empty:
+        return {"result": None, "error": "Dataset is empty.", "query_desc": ""}
+
     if op is None and target is None:
         return {
             "result": None,
@@ -278,16 +281,16 @@ def generate_query_insight(result_dict, target, group):
         bot_val   = result_sorted.iloc[-1]
 
         insights.append(
-            f"Highest '{target}': **{top_name}** with {_fmt(top_val)}"
+            f"🥇 Highest '{target}': **{top_name}** with {_fmt(top_val)}"
         )
         insights.append(
-            f"Lowest '{target}': **{bot_name}** with {_fmt(bot_val)}"
+            f"🔻 Lowest '{target}': **{bot_name}** with {_fmt(bot_val)}"
         )
 
         if len(result_sorted) > 2:
             spread = top_val - bot_val
             insights.append(
-                f"Range across {len(result_sorted)} groups: {_fmt(spread)}"
+                f"📊 Range across {len(result_sorted)} groups: {_fmt(spread)}"
             )
 
         # Check if one group dominates (>50% of total)
@@ -297,7 +300,7 @@ def generate_query_insight(result_dict, target, group):
                 top_pct = (top_val / total) * 100
                 if top_pct > 50:
                     insights.append(
-                        f"'{top_name}' accounts for {top_pct:.1f}% of total — significantly dominant."
+                        f"⚠️ '{top_name}' accounts for {top_pct:.1f}% of total — significantly dominant."
                     )
         except Exception:
             pass
@@ -306,9 +309,9 @@ def generate_query_insight(result_dict, target, group):
     else:
         try:
             val = float(result)
-            insights.append(f"Result: **{_fmt(val)}**")
+            insights.append(f"📌 Result: **{_fmt(val)}**")
         except Exception:
-            insights.append(f"Result: **{result}**")
+            insights.append(f"📌 Result: **{result}**")
 
     return insights
 

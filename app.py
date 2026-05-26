@@ -181,6 +181,18 @@ if raw_df is None and dataset_url:
 
 if raw_df is not None:
 
+    # ── Edge case: empty dataset ──────────────────────────────
+    if raw_df.empty:
+        st.error("⚠️ The uploaded file is empty. Please upload a file with data.")
+        st.stop()
+
+    if raw_df.shape[1] == 0:
+        st.error("⚠️ No columns found in the file. Please check the file format.")
+        st.stop()
+
+    if raw_df.shape[0] < 2:
+        st.warning("⚠️ Dataset has very few rows — some features may not work correctly.")
+
     df = raw_df.copy()
 
     # =====================================================
@@ -245,16 +257,18 @@ if raw_df is not None:
     dataset_profile = "general"
     column_profiles = {}
 
-    try:
-        dataset_profile, column_profiles = run_profiler(df_hash, df)
-    except Exception as e:
-        st.warning(f"Profiler Warning: {e}")
+    with st.spinner("🔍 Analysing dataset..."):
+        try:
+            dataset_profile, column_profiles = run_profiler(df_hash, df)
+        except Exception as e:
+            st.warning(f"Profiler Warning: {e}")
 
-    try:
-        clean_df, report = run_preprocessing(df_hash, df, outlier_option, missing_option, dataset_profile, column_profiles)
-    except Exception as e:
-        st.error(f"Preprocessing Error: {e}")
-        clean_df, report = df.copy(), []
+    with st.spinner("🧹 Cleaning data..."):
+        try:
+            clean_df, report = run_preprocessing(df_hash, df, outlier_option, missing_option, dataset_profile, column_profiles)
+        except Exception as e:
+            st.error(f"Preprocessing Error: {e}")
+            clean_df, report = df.copy(), []
 
     # =====================================================
     # SIDEBAR FILTERS
@@ -263,12 +277,24 @@ if raw_df is not None:
     st.sidebar.subheader("Filters")
     filtered_df = clean_df.copy()
 
-    for col in clean_df.select_dtypes(include="object").columns:
-        unique_vals = clean_df[col].dropna().unique().tolist()
-        if len(unique_vals) <= 50:
-            selected = st.sidebar.selectbox(f"Filter: {col}", ["All"] + sorted([str(v) for v in unique_vals]))
-            if selected != "All":
-                filtered_df = filtered_df[filtered_df[col].astype(str) == selected]
+    try:
+        cat_filter_cols = [
+            c for c in clean_df.select_dtypes(include="object").columns
+            if 2 <= clean_df[c].nunique() <= 30   # only useful filter ranges
+        ][:8]  # max 8 filters to avoid sidebar overload
+
+        for col in cat_filter_cols:
+            try:
+                unique_vals = clean_df[col].dropna().unique().tolist()
+                selected = st.sidebar.selectbox(
+                    f"Filter: {col}", ["All"] + sorted([str(v) for v in unique_vals])
+                )
+                if selected != "All":
+                    filtered_df = filtered_df[filtered_df[col].astype(str) == selected]
+            except Exception:
+                continue
+    except Exception:
+        pass  # filters non-critical — continue without them
 
     # =====================================================
     # TABS
@@ -299,16 +325,19 @@ if raw_df is not None:
         st.info(f"{badge} Detected Dataset Type: **{dataset_profile.upper()}**")
 
         # KPI metrics
-        numeric_cols  = filtered_df.select_dtypes(include="number").columns.tolist()
-        raw_missing   = int(raw_df.isnull().sum().sum())
-        clean_missing = int(clean_df.isnull().sum().sum())
+        try:
+            numeric_cols  = filtered_df.select_dtypes(include="number").columns.tolist()
+            raw_missing   = int(raw_df.isnull().sum().sum())
+            clean_missing = int(clean_df.isnull().sum().sum())
 
-        c1, c2, c3, c4, c5 = st.columns(5)
-        c1.metric("Rows",            len(filtered_df))
-        c2.metric("Columns",         filtered_df.shape[1])
-        c3.metric("Missing (Raw)",   f"{raw_missing:,}")
-        c4.metric("Missing (Clean)", f"{clean_missing:,}", delta=f"-{raw_missing - clean_missing:,}", delta_color="inverse")
-        c5.metric("Numeric Cols",    len(numeric_cols))
+            c1, c2, c3, c4, c5 = st.columns(5)
+            c1.metric("Rows",            len(filtered_df))
+            c2.metric("Columns",         filtered_df.shape[1])
+            c3.metric("Missing (Raw)",   f"{raw_missing:,}")
+            c4.metric("Missing (Clean)", f"{clean_missing:,}", delta=f"-{raw_missing - clean_missing:,}", delta_color="inverse")
+            c5.metric("Numeric Cols",    len(numeric_cols))
+        except Exception as e:
+            st.warning(f"Could not compute metrics: {e}")
 
         st.divider()
 
@@ -455,7 +484,11 @@ if raw_df is not None:
         ctrl1, ctrl2, ctrl3 = st.columns([2, 2, 2])
 
         with ctrl1:
-            use_groupby = st.checkbox("Use Group By")
+            use_groupby = st.checkbox(
+                "Use Group By",
+                disabled=not bool(categorical_cols),
+                help="No categorical columns available" if not categorical_cols else ""
+            )
             group_col   = None
             agg_func    = "sum"
             if use_groupby and categorical_cols:
@@ -524,8 +557,11 @@ if raw_df is not None:
                     height=480,
                 )
                 fig.update_traces(textposition="outside", cliponaxis=False)
-                st.plotly_chart(fig, use_container_width=True)
-                _save_to_dashboard_btn(fig, f"Bar: {y_col} by {grp}", "bar", all_charts_count=len(st.session_state.get("dashboard_charts",[])))
+                try:
+                    st.plotly_chart(fig, use_container_width=True)
+                    _save_to_dashboard_btn(fig, f"Bar: {y_col} by {grp}", "bar", all_charts_count=len(st.session_state.get("dashboard_charts",[])))
+                except Exception as e:
+                    st.error(f"Chart error: {e}")
 
         # ── LINE CHART ───────────────────────────────────────────────
         elif chart_type == "Line Chart":
@@ -559,8 +595,11 @@ if raw_df is not None:
                     color_discrete_sequence=["#636EFA"],
                 )
                 fig.update_layout(height=460, xaxis_tickangle=-30)
-                st.plotly_chart(fig, use_container_width=True)
-                _save_to_dashboard_btn(fig, f"Line: {y_col} over {x_use}", "line", all_charts_count=len(st.session_state.get("dashboard_charts",[])))
+                try:
+                    st.plotly_chart(fig, use_container_width=True)
+                    _save_to_dashboard_btn(fig, f"Line: {y_col} over {x_use}", "line", all_charts_count=len(st.session_state.get("dashboard_charts",[])))
+                except Exception as e:
+                    st.error(f"Chart error: {e}")
 
         # ── SCATTER PLOT ─────────────────────────────────────────────
         elif chart_type == "Scatter Plot":
@@ -588,8 +627,11 @@ if raw_df is not None:
                 )
                 fig.update_layout(height=480)
                 fig.update_traces(marker=dict(size=6))
-                st.plotly_chart(fig, use_container_width=True)
-                _save_to_dashboard_btn(fig, f"Scatter: {x_col} vs {y_col}", "scatter", all_charts_count=len(st.session_state.get("dashboard_charts",[])))
+                try:
+                    st.plotly_chart(fig, use_container_width=True)
+                    _save_to_dashboard_btn(fig, f"Scatter: {x_col} vs {y_col}", "scatter", all_charts_count=len(st.session_state.get("dashboard_charts",[])))
+                except Exception as e:
+                    st.error(f"Chart error: {e}")
 
         # ── HISTOGRAM ────────────────────────────────────────────────
         elif chart_type == "Histogram":
@@ -851,15 +893,23 @@ if raw_df is not None:
         st.subheader("🤖 ML Prediction")
 
         all_targets = filtered_df.columns.tolist()
-        target      = st.selectbox("Select Target Column to Predict", all_targets)
+
+        if not all_targets:
+            st.warning("No columns found. Please upload a valid dataset.")
+            target = None
+        else:
+            target = st.selectbox("Select Target Column to Predict", all_targets)
 
         if target:
             task_hint = detect_task_type(filtered_df[target])
             st.caption(f"Detected task: **{task_hint}** — {'predicting a number' if task_hint == 'regression' else 'predicting a category'}")
 
-        if st.button("🚀 Train & Compare Models", type="primary"):
-            with st.spinner("Training multiple models and selecting the best one..."):
-                ml_result = train_prediction_model(filtered_df, target)
+        if target and st.button("🚀 Train & Compare Models", type="primary"):
+            try:
+                with st.spinner("Training multiple models and selecting the best one..."):
+                    ml_result = train_prediction_model(filtered_df, target)
+            except Exception as e:
+                ml_result = {"error": f"Unexpected error: {e}"}
 
             if ml_result.get("error"):
                 st.error(f"❌ {ml_result['error']}")
@@ -1083,7 +1133,11 @@ if raw_df is not None:
         col_gen, col_clr = st.columns([2, 1])
         with col_gen:
             if st.button("🔄 Generate Auto Charts", type="primary"):
-                auto_charts = generate_auto_charts(filtered_df)
+                if filtered_df.empty:
+                    st.warning("No data available to generate charts.")
+                    auto_charts = []
+                else:
+                    auto_charts = generate_auto_charts(filtered_df)
                 # Merge: keep studio charts, replace auto charts
                 studio_charts = [
                     c for c in st.session_state["dashboard_charts"]
@@ -1319,22 +1373,29 @@ if raw_df is not None:
                     gen_export = st.button("📥 Generate", key=f"gen_{report_choice}", type="primary")
 
                 if gen_export:
-                    with st.spinner(f"Generating {export_fmt}..."):
-                        exp_kpis   = rpt.get("kpis", {})
-                        exp_charts = rpt.get("charts", [])
-                        exp_ins    = rpt.get("insights", [])
-                        if export_fmt == "HTML":
-                            data  = export_html(report_choice, exp_kpis, exp_charts, exp_ins)
-                            fname = f"{report_choice.replace(' ','_')}.html"
-                            mime  = "text/html"
-                        elif export_fmt == "PDF":
-                            data  = export_pdf(report_choice, exp_kpis, exp_charts, exp_ins)
-                            fname = f"{report_choice.replace(' ','_')}.pdf"
-                            mime  = "application/pdf"
-                        else:
-                            data  = export_ppt(report_choice, exp_kpis, exp_charts, exp_ins)
-                            fname = f"{report_choice.replace(' ','_')}.pptx"
-                            mime  = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                    try:
+                        with st.spinner(f"Generating {export_fmt}..."):
+                            exp_kpis   = rpt.get("kpis", {})
+                            exp_charts = rpt.get("charts", [])
+                            exp_ins    = rpt.get("insights", [])
+                            if export_fmt == "HTML":
+                                data  = export_html(report_choice, exp_kpis, exp_charts, exp_ins)
+                                fname = f"{report_choice.replace(' ','_')}.html"
+                                mime  = "text/html"
+                            elif export_fmt == "PDF":
+                                data  = export_pdf(report_choice, exp_kpis, exp_charts, exp_ins)
+                                fname = f"{report_choice.replace(' ','_')}.pdf"
+                                mime  = "application/pdf"
+                            else:
+                                data  = export_ppt(report_choice, exp_kpis, exp_charts, exp_ins)
+                                fname = f"{report_choice.replace(' ','_')}.pptx"
+                                mime  = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                    except Exception as e:
+                        st.error(f"Export failed: {e}")
+                        data = None
+
+                    if data:
+                        pass
 
                     st.download_button(
                         label=f"⬇️ Download {export_fmt}",
