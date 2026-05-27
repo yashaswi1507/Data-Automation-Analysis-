@@ -1,16 +1,15 @@
+streamlit
 pandas
 numpy
-streamlit
-plotly
 scikit-learn
-requests
-beautifulsoup4
-lxml
-kagglehub
+plotly
 openpyxl
 xlrd
-statsmodels
+beautifulsoup4
+requests
+kagglehub
 reportlab
 python-pptx
 statsmodels
-kaleido == 0.2.1
+matplotlib
+kaleido==0.2.1
