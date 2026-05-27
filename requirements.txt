@@ -7,7 +7,7 @@ openpyxl
 xlrd
 beautifulsoup4
 requests
-kagglehub
+kagglehub==0.2.9
 reportlab
 python-pptx
 statsmodels
