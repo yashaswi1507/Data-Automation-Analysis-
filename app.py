@@ -53,106 +53,148 @@ def _save_to_dashboard_btn(fig, title, chart_type, all_charts_count=0):
 
 def _suggest_target_column(df):
     """
-    Suggest the best target column for ML prediction.
-    Purely data-driven — no column name assumptions.
-    Returns (column_name, reason) or (None, "").
+    Suggest best target column for ML using predictability scoring.
+    Trains a quick model on each candidate column and picks the most predictable one.
+    Returns (column_name, reason, scores_dict) or (None, "", {}).
     """
     import pandas as pd
     import numpy as np
+    from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+    from sklearn.preprocessing import LabelEncoder
+    from sklearn.impute import SimpleImputer
+    from sklearn.model_selection import cross_val_score
+    import warnings
+    warnings.filterwarnings("ignore")
 
     if df.empty or df.shape[1] < 2:
-        return None, ""
+        return None, "", {}
 
-    numeric_cols     = df.select_dtypes(include="number").columns.tolist()
-    categorical_cols = df.select_dtypes(exclude="number").columns.tolist()
-    n_rows           = len(df)
+    n_rows = len(df)
+
+    # Use sample for speed — max 300 rows for quick scoring
+    sample_df = df.sample(min(300, n_rows), random_state=42) if n_rows > 300 else df.copy()
 
     candidates = []
 
     for col in df.columns:
-        s         = df[col].dropna()
-        n_unique  = s.nunique()
-        miss_pct  = df[col].isnull().mean()
-        score     = 0
-        reasons   = []
+        s        = df[col].dropna()
+        miss_pct = df[col].isnull().mean()
+        n_unique = s.nunique()
 
-        # Skip if too many missing values
-        if miss_pct > 0.4:
-            continue
+        # Hard filters — skip bad targets
+        if miss_pct > 0.4:       continue  # too many missing
+        if n_unique <= 1:        continue  # constant
+        if n_unique == n_rows:   continue  # unique ID column
 
-        # Skip if constant column
-        if n_unique <= 1:
-            continue
+        # Categorical: skip high-cardinality (names, addresses)
+        if not pd.api.types.is_numeric_dtype(s):
+            if n_unique > 20:    continue
+            if n_unique < 2:     continue
 
+        reasons = []
+
+        # ── Quality signals ───────────────────────────────────
+        quality_score = 0
+
+        # Missing % penalty
+        if miss_pct < 0.05:
+            quality_score += 20
+            reasons.append("very few missing values")
+        elif miss_pct < 0.20:
+            quality_score += 10
+
+        # Class balance check (classification)
+        if not pd.api.types.is_numeric_dtype(s) and n_unique >= 2:
+            vc      = s.value_counts(normalize=True)
+            min_cls = vc.min()
+            if min_cls >= 0.15:
+                quality_score += 15
+                reasons.append(f"balanced classes ({n_unique} classes)")
+            elif min_cls >= 0.05:
+                quality_score += 5
+
+        # Variance check (regression)
         if pd.api.types.is_numeric_dtype(s):
-            # Prefer columns with meaningful variance
-            cv = s.std() / s.mean() if s.mean() != 0 else 0
-
-            # Prefer bounded range columns (scores, rates, counts)
-            value_range  = float(s.max() - s.min())
-            whole_frac   = (s == s.round()).mean()
-
-            if whole_frac >= 0.85 and value_range <= 300:
-                score += 30
-                reasons.append("discrete numeric with bounded range")
-
-            if 0.1 < abs(cv) < 2.0:
-                score += 20
+            cv = abs(s.std() / s.mean()) if s.mean() != 0 else 0
+            if 0.05 < cv < 3.0:
+                quality_score += 15
                 reasons.append("good variance")
 
-            # Prefer columns that correlate well with others
-            other_nums = [c for c in numeric_cols if c != col]
-            if other_nums:
-                try:
-                    corr_vals = df[other_nums + [col]].corr()[col].drop(col).abs()
-                    max_corr  = corr_vals.max()
-                    if max_corr > 0.3:
-                        score += 25
-                        reasons.append(f"correlates well with other columns (r={max_corr:.2f})")
-                except Exception:
-                    pass
+        # ── Predictability score — quick Random Forest ────────
+        pred_score = 0.0
+        try:
+            # Build feature matrix — all cols except current target
+            feat_cols = [c for c in sample_df.columns if c != col]
+            X = sample_df[feat_cols].copy()
+            y = sample_df[col].copy()
 
-            # Strongly prefer columns at end of dataset (outcome variables are usually last)
-            col_idx   = df.columns.tolist().index(col)
-            col_total = len(df.columns)
-            if col_idx == col_total - 1:
-                score += 30
-                reasons.append("last column — usually the outcome/target variable")
-            elif col_idx >= col_total * 0.7:
-                score += 15
-                reasons.append("appears toward end of dataset (often outcome)")
+            # Drop rows where target is missing
+            mask = y.notna()
+            X, y = X[mask], y[mask]
 
-        else:
-            # Categorical target — classification
-            unique_ratio = n_unique / n_rows
+            if len(y) < 20:
+                raise ValueError("too few rows")
 
-            # Best: 2-10 classes, balanced
-            if 2 <= n_unique <= 10:
-                score += 30
-                reasons.append(f"{n_unique} balanced classes — good for classification")
+            # Encode categorical features
+            for fc in X.select_dtypes(include=["object","category"]).columns:
+                le = LabelEncoder()
+                X[fc] = le.fit_transform(X[fc].astype(str))
 
-            # Check class balance
-            if n_unique >= 2:
-                vc      = s.value_counts(normalize=True)
-                balance = 1 - vc.std()
-                if balance > 0.7:
-                    score += 15
-                    reasons.append("classes are balanced")
+            # Impute
+            imp = SimpleImputer(strategy="median")
+            X_arr = imp.fit_transform(X)
 
-        candidates.append((col, score, reasons))
+            # Encode target if categorical
+            is_clf = not pd.api.types.is_numeric_dtype(y)
+            if is_clf:
+                le_y = LabelEncoder()
+                y    = le_y.fit_transform(y.astype(str))
+
+            # Quick cross-val (2-fold for speed)
+            cv_folds = min(3, len(y) // 10)
+            if cv_folds < 2:
+                raise ValueError("not enough data for CV")
+
+            if is_clf:
+                model   = RandomForestClassifier(n_estimators=30, max_depth=4, random_state=42, n_jobs=-1)
+                scoring = "accuracy"
+            else:
+                model   = RandomForestRegressor(n_estimators=30, max_depth=4, random_state=42, n_jobs=-1)
+                scoring = "r2"
+
+            scores    = cross_val_score(model, X_arr, y, cv=cv_folds, scoring=scoring)
+            pred_score = max(float(scores.mean()), 0.0)
+
+            # Label the predictability
+            if pred_score >= 0.7:
+                reasons.append(f"highly predictable (score={pred_score:.2f})")
+            elif pred_score >= 0.4:
+                reasons.append(f"moderately predictable (score={pred_score:.2f})")
+            else:
+                reasons.append(f"low predictability (score={pred_score:.2f})")
+
+        except Exception:
+            pred_score = 0.0
+
+        total_score = quality_score + (pred_score * 100)
+        candidates.append((col, total_score, pred_score, reasons))
 
     if not candidates:
-        return None, ""
+        return None, "", {}
 
-    # Sort by score descending
+    # Sort by total score
     candidates.sort(key=lambda x: x[1], reverse=True)
-    best_col, best_score, best_reasons = candidates[0]
 
-    if best_score == 0:
-        return None, ""
+    best_col, best_total, best_pred, best_reasons = candidates[0]
 
-    reason_str = " | ".join(best_reasons[:2]) if best_reasons else "good candidate"
-    return best_col, reason_str
+    # Build scores dict for display
+    scores_dict = {
+        c[0]: round(c[2], 3)
+        for c in candidates
+    }
+
+    reason_str = " | ".join(best_reasons[:2]) if best_reasons else "best candidate in dataset"
+    return best_col, reason_str, scores_dict
 
 # =========================================================
 # PAGE CONFIG
@@ -1003,11 +1045,27 @@ if raw_df is not None:
             target = None
         else:
             # ── Smart column suggestion ───────────────────────
-            suggested, suggest_reason = _suggest_target_column(filtered_df)
+            with st.spinner("🔍 Finding best target column..."):
+                suggested, suggest_reason, scores_dict = _suggest_target_column(filtered_df)
 
             if suggested:
-                st.info(f"💡 **Suggested target:** `{suggested}`  |  {suggest_reason}  |  You can change this below.")
+                st.info(f"💡 **Suggested target:** `{suggested}`  |  {suggest_reason}")
                 default_idx = all_targets.index(suggested) if suggested in all_targets else 0
+
+                # Show predictability scores for all candidates
+                if scores_dict:
+                    with st.expander("📊 Predictability scores for all columns", expanded=False):
+                        import pandas as pd
+                        sc_df = (
+                            pd.DataFrame(list(scores_dict.items()), columns=["Column","Score"])
+                            .sort_values("Score", ascending=False)
+                            .reset_index(drop=True)
+                        )
+                        sc_df["Score"] = sc_df["Score"].apply(
+                            lambda x: f"{x:.2f} {'🟢' if x>=0.7 else '🟡' if x>=0.4 else '🔴'}"
+                        )
+                        st.dataframe(sc_df, use_container_width=True, hide_index=True)
+                        st.caption("Score = how well other columns can predict this one (0=unpredictable, 1=perfect)")
             else:
                 default_idx = 0
 
@@ -1015,6 +1073,7 @@ if raw_df is not None:
                 "Select Target Column to Predict",
                 all_targets,
                 index=default_idx,
+                help="Pre-selected based on predictability scoring. You can change this."
             )
 
         if target:
