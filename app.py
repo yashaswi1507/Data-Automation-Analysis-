@@ -34,7 +34,7 @@ def _save_to_dashboard_btn(fig, title, chart_type, all_charts_count=0):
         st.session_state["dashboard_charts"] = []
 
     btn_key = f"save_dash_{title}_{chart_type}_{all_charts_count}"
-    if st.button(f"📌 Save to Dashboard", key=btn_key, help="Add this chart to Auto Dashboard"):
+    if st.button(f"Save to Dashboard", key=btn_key, help="Add this chart to Auto Dashboard"):
         new_id  = int(pd.Timestamp.now().timestamp() * 1000)
         already = any(c["title"] == title for c in st.session_state["dashboard_charts"])
         if already:
@@ -48,7 +48,7 @@ def _save_to_dashboard_btn(fig, title, chart_type, all_charts_count=0):
                 "pinned":     True,
                 "source":     "studio",
             })
-            st.toast(f"✅ '{title}' saved to Auto Dashboard!", icon="📌")
+            st.toast(f"'{title}' saved to Auto Dashboard!", icon="📌")
 
 
 def _suggest_target_column(df):
@@ -329,15 +329,15 @@ if raw_df is not None:
 
     # ── Edge case: empty dataset ──────────────────────────────
     if raw_df.empty:
-        st.error("⚠️ The uploaded file is empty. Please upload a file with data.")
+        st.error("The uploaded file is empty. Please upload a file with data.")
         st.stop()
 
     if raw_df.shape[1] == 0:
-        st.error("⚠️ No columns found in the file. Please check the file format.")
+        st.error("No columns found in the file. Please check the file format.")
         st.stop()
 
     if raw_df.shape[0] < 2:
-        st.warning("⚠️ Dataset has very few rows — some features may not work correctly.")
+        st.warning("Dataset has very few rows — some features may not work correctly.")
 
     df = raw_df.copy()
 
@@ -374,10 +374,10 @@ if raw_df is not None:
             "Fill Method",
             ["Median", "Mean", "Mode", "Drop Rows"],
         )
-        st.sidebar.info("⚙️ Manual override active — numeric columns will use your chosen method.")
+        st.sidebar.info("Manual override active — numeric columns will use your chosen method.")
     else:
         missing_option = "Auto"
-        st.sidebar.success("✅ Auto mode — each column filled by its data personality.")
+        st.sidebar.success("Auto mode — each column filled by its data personality.")
 
     st.sidebar.divider()
 
@@ -403,7 +403,7 @@ if raw_df is not None:
     dataset_profile = "general"
     column_profiles = {}
 
-    with st.spinner("🔍 Analysing dataset..."):
+    with st.spinner("🔍Analysing dataset..."):
         try:
             dataset_profile, column_profiles = run_profiler(df_hash, df)
         except Exception as e:
@@ -447,8 +447,8 @@ if raw_df is not None:
     # =====================================================
 
     tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-        "📊 Dashboard", "📋 Summary", "📈 Visualization Studio",
-        "🔍 Query Engine", "🤖 ML Prediction", "⚡ Auto Dashboard", "📁 My Reports"
+        "Dashboard", "Summary", "Visualization Studio",
+        "Query Engine", "ML Prediction", "Auto Dashboard", "My Reports"
     ])
 
     # =====================================================
@@ -495,7 +495,7 @@ if raw_df is not None:
         st.divider()
 
         # ── Cleaning Report — improved UI ────────────────
-        st.subheader("🧹 Cleaning Report")
+        st.subheader("Cleaning Report")
 
         # Categorise report lines
         info_lines   = [r for r in report if r.startswith("📋")]
@@ -517,12 +517,12 @@ if raw_df is not None:
 
         st.divider()
 
-        with st.expander("📝 Dataset Info", expanded=False):
+        with st.expander("Dataset Info", expanded=False):
             for r in info_lines:
                 st.write(r)
 
         if split_lines:
-            with st.expander(f"✂️ Structured Columns Split ({len(split_lines)})", expanded=True):
+            with st.expander(f"Structured Columns Split ({len(split_lines)})", expanded=True):
                 for r in split_lines + [l for l in fill_lines if "↳" in l]:
                     if "↳" in r:
                         st.caption(r)
@@ -531,7 +531,7 @@ if raw_df is not None:
 
         non_arrow_fills = [l for l in fill_lines if "↳" not in l]
         if non_arrow_fills:
-            with st.expander(f"🔧 Missing Values Filled ({len(non_arrow_fills)})", expanded=True):
+            with st.expander(f"Missing Values Filled ({len(non_arrow_fills)})", expanded=True):
                 for r in non_arrow_fills:
                     # Colour by method used
                     if "Unknown" in r:
@@ -544,12 +544,12 @@ if raw_df is not None:
                         st.success(r)
 
         if dup_lines:
-            with st.expander("🗑️ Duplicates", expanded=False):
+            with st.expander("Duplicates", expanded=False):
                 for r in dup_lines:
                     st.success(r)
 
         if outlier_lines:
-            with st.expander(f"📉 Outlier Handling ({len(outlier_lines)})", expanded=False):
+            with st.expander(f"Outlier Handling ({len(outlier_lines)})", expanded=False):
                 for r in outlier_lines:
                     st.info(r)
 
@@ -565,7 +565,7 @@ if raw_df is not None:
         st.dataframe(clean_df.head(rows_to_show), use_container_width=True)
 
         st.download_button(
-            label="⬇️ Download Cleaned CSV",
+            label="⬇️Download Cleaned CSV",
             data=clean_df.to_csv(index=False).encode("utf-8"),
             file_name="cleaned_data.csv",
             mime="text/csv"
@@ -688,7 +688,7 @@ if raw_df is not None:
                 showing    = len(chart_df)
 
                 if not show_all and total_cats > top_n:
-                    st.caption(f"📊 Showing top {showing} of {total_cats} categories by {y_col}. Toggle 'Show All Values' to see more.")
+                    st.caption(f"Showing top {showing} of {total_cats} categories by {y_col}. Toggle 'Show All Values' to see more.")
 
                 fig = px.bar(
                     chart_df, x=grp, y=y_col, color=grp,
@@ -732,7 +732,7 @@ if raw_df is not None:
                 total_pts = len(filtered_df)
                 showing   = len(chart_df)
                 if not show_all and showing < total_pts:
-                    st.caption(f"📈 Showing {showing} of {total_pts} points for clarity.")
+                    st.caption(f"Showing {showing} of {total_pts} points for clarity.")
 
                 fig = px.line(
                     chart_df, x=x_use, y=y_col,
@@ -819,7 +819,7 @@ if raw_df is not None:
                     )
                     chart_df = filtered_df[filtered_df[grp_box].isin(top_cats)]
                     if not show_all and filtered_df[grp_box].nunique() > top_n:
-                        st.caption(f"📦 Showing top {top_n} categories by frequency.")
+                        st.caption(f"Showing top {top_n} categories by frequency.")
                 else:
                     chart_df = filtered_df
 
@@ -881,7 +881,7 @@ if raw_df is not None:
                 st.warning("Need at least two numeric columns.")
             else:
                 if len(numeric_cols) > 20:
-                    st.caption(f"📐 {len(numeric_cols)} numeric columns — showing all. Deselect columns from filters if needed.")
+                    st.caption(f"{len(numeric_cols)} numeric columns — showing all. Deselect columns from filters if needed.")
 
                 corr = filtered_df[numeric_cols].corr().round(2)
                 fig  = px.imshow(
@@ -907,7 +907,7 @@ if raw_df is not None:
     # =====================================================
 
     with tab4:
-        st.subheader("🔍 Query Engine")
+        st.subheader("Query Engine")
         st.caption("Ask questions in plain English — e.g. 'average salary by department', 'total sales per region', 'count of students by gender'")
 
         query = st.text_input("Ask a question about your data", placeholder="e.g. average math score by gender")
@@ -920,9 +920,9 @@ if raw_df is not None:
             ex2 = f"maximum {example_cols[0]}"
             ex3 = f"count by {cat_cols[0]}"
             e1, e2, e3 = st.columns(3)
-            if e1.button(f"📊 {ex1}", use_container_width=True): query = ex1
-            if e2.button(f"📈 {ex2}", use_container_width=True): query = ex2
-            if e3.button(f"🔢 {ex3}", use_container_width=True): query = ex3
+            if e1.button(f"{ex1}", use_container_width=True): query = ex1
+            if e2.button(f"{ex2}", use_container_width=True): query = ex2
+            if e3.button(f"{ex3}", use_container_width=True): query = ex3
 
         if query:
             op, target, group = parse_query(query, filtered_df)
@@ -945,10 +945,10 @@ if raw_df is not None:
             st.divider()
 
             if error:
-                st.error(f"❌ {error}")
-                st.info("💡 Try queries like: 'average [column] by [column]', 'total [column]', 'count by [column]'")
+                st.error(f"{error}")
+                st.info("Try queries like: 'average [column] by [column]', 'total [column]', 'count by [column]'")
             else:
-                st.success(f"✅ {query_desc}")
+                st.success(f"{query_desc}")
 
                 # Show result
                 if isinstance(result, pd.Series):
@@ -984,7 +984,7 @@ if raw_df is not None:
                 insights = generate_query_insight(result_dict, target, group)
                 if insights:
                     st.divider()
-                    st.subheader("💡 Insights")
+                    st.subheader("Insights")
                     for ins in insights:
                         st.info(ins)
 
@@ -1011,7 +1011,7 @@ if raw_df is not None:
 
                         chart_entry = {
                             "id":         int(pd.Timestamp.now().timestamp() * 1000),
-                            "title":      f"🔍 {query_desc}",
+                            "title":      f"{query_desc}",
                             "fig_json":   fig_q.to_json(),
                             "chart_type": "bar",
                             "pinned":     True,
@@ -1024,19 +1024,19 @@ if raw_df is not None:
                     # Store query insight
                     if "dashboard_query_insights" not in st.session_state:
                         st.session_state["dashboard_query_insights"] = []
-                    q_ins = f"🔍 Query: '{query}' → {query_desc}"
+                    q_ins = f"Query: '{query}' → {query_desc}"
                     if insights:
                         q_ins += " | " + " | ".join([i.replace("**","").replace("*","") for i in insights])
                     st.session_state["dashboard_query_insights"].append(q_ins)
 
-                    st.success("✅ Sent to **⚡ Auto Dashboard**! Go there to review and save to report.")
+                    st.success("Sent to **Auto Dashboard**! Go there to review and save to report.")
 
     # =====================================================
     # TAB 5 — ML PREDICTION
     # =====================================================
 
     with tab5:
-        st.subheader("🤖 ML Prediction")
+        st.subheader("ML Prediction")
 
         all_targets = filtered_df.columns.tolist()
 
@@ -1045,16 +1045,16 @@ if raw_df is not None:
             target = None
         else:
             # ── Smart column suggestion ───────────────────────
-            with st.spinner("🔍 Finding best target column..."):
+            with st.spinner("Finding best target column..."):
                 suggested, suggest_reason, scores_dict = _suggest_target_column(filtered_df)
 
             if suggested:
-                st.info(f"💡 **Suggested target:** `{suggested}`  |  {suggest_reason}")
+                st.info(f"**Suggested target:** `{suggested}`  |  {suggest_reason}")
                 default_idx = all_targets.index(suggested) if suggested in all_targets else 0
 
                 # Show predictability scores for all candidates
                 if scores_dict:
-                    with st.expander("📊 Predictability scores for all columns", expanded=False):
+                    with st.expander("Predictability scores for all columns", expanded=False):
                         import pandas as pd
                         sc_df = (
                             pd.DataFrame(list(scores_dict.items()), columns=["Column","Score"])
@@ -1080,7 +1080,7 @@ if raw_df is not None:
             task_hint = detect_task_type(filtered_df[target])
             st.caption(f"Detected task: **{task_hint}** — {'predicting a number' if task_hint == 'regression' else 'predicting a category'}")
 
-        if target and st.button("🚀 Train & Compare Models", type="primary"):
+        if target and st.button("Train & Compare Models", type="primary"):
             try:
                 with st.spinner("Training multiple models and selecting the best one..."):
                     ml_result = train_prediction_model(filtered_df, target)
@@ -1088,7 +1088,7 @@ if raw_df is not None:
                 ml_result = {"error": f"Unexpected error: {e}"}
 
             if ml_result.get("error"):
-                st.error(f"❌ {ml_result['error']}")
+                st.error(f"{ml_result['error']}")
             else:
                 st.session_state["ml_result"] = ml_result
                 st.session_state["ml_target"] = target
@@ -1099,7 +1099,7 @@ if raw_df is not None:
             st.divider()
 
             # ── Best model banner ────────────────────────────────
-            st.success(f"🏆 Best Model: **{ml_result['best_model_name']}** | Task: {ml_result['task_type'].title()}")
+            st.success(f"Best Model: **{ml_result['best_model_name']}** | Task: {ml_result['task_type'].title()}")
 
             # ── Metrics ──────────────────────────────────────────
             metrics = ml_result["metrics"]
@@ -1115,12 +1115,12 @@ if raw_df is not None:
             col_cmp, col_imp = st.columns(2)
 
             with col_cmp:
-                st.subheader("📊 Model Comparison")
+                st.subheader("Model Comparison")
                 cmp_df = pd.DataFrame(ml_result["model_comparison"])
                 st.dataframe(cmp_df, use_container_width=True, hide_index=True)
 
             with col_imp:
-                st.subheader("🎯 Feature Importance")
+                st.subheader("Feature Importance")
                 if ml_result["feature_importance"]:
                     imp_df = pd.DataFrame(ml_result["feature_importance"]).head(10)
                     fig_imp = px.bar(
@@ -1141,7 +1141,7 @@ if raw_df is not None:
             st.divider()
 
             # ── Predict on new input ─────────────────────────────
-            st.subheader("🔮 Make a Prediction")
+            st.subheader("Make a Prediction")
             st.caption("Fill in the values below to predict the target.")
 
             feature_names  = ml_result["feature_names"]
@@ -1173,7 +1173,7 @@ if raw_df is not None:
                         key=f"ml_input_{feat}"
                     )
 
-            if st.button("🎯 Predict", type="primary"):
+            if st.button("Predict", type="primary"):
                 try:
                     pred = predict_single(ml_result, input_values)
 
@@ -1199,7 +1199,7 @@ if raw_df is not None:
                             percentile = float((col_data < pred_val).mean() * 100)
 
                             st.divider()
-                            st.subheader("🧠 Result Interpretation")
+                            st.subheader("Result Interpretation")
 
                             # User defines what HIGH means for this column
                             high_means = st.radio(
@@ -1269,7 +1269,7 @@ if raw_df is not None:
                         else:
                             # Classification
                             st.divider()
-                            st.subheader("🧠 Result Interpretation")
+                            st.subheader("Result Interpretation")
 
                             vc             = col_data.value_counts(normalize=True) * 100
                             total_classes  = len(vc)
@@ -1330,7 +1330,7 @@ if raw_df is not None:
                 lp = st.session_state["last_prediction"]
 
                 st.divider()
-                if st.button("📤 Send to Auto Dashboard", key="ml_to_dashboard", type="primary"):
+                if st.button("Send to Auto Dashboard", key="ml_to_dashboard", type="primary"):
                     if "dashboard_charts" not in st.session_state:
                         st.session_state["dashboard_charts"] = []
 
@@ -1352,7 +1352,7 @@ if raw_df is not None:
                         fig_imp.update_layout(height=350, showlegend=False, coloraxis_showscale=False)
                         new_charts.append({
                             "id":         int(pd.Timestamp.now().timestamp() * 1000),
-                            "title":      f"🤖 Feature Importance — {target}",
+                            "title":      f"Feature Importance — {target}",
                             "fig_json":   fig_imp.to_json(),
                             "chart_type": "bar",
                             "pinned":     True,
@@ -1374,7 +1374,7 @@ if raw_df is not None:
                     fig_cmp.update_layout(height=300, showlegend=False, coloraxis_showscale=False)
                     new_charts.append({
                         "id":         int(pd.Timestamp.now().timestamp() * 1000) + 1,
-                        "title":      "🤖 Model Comparison",
+                        "title":      "Model Comparison",
                         "fig_json":   fig_cmp.to_json(),
                         "chart_type": "bar",
                         "pinned":     True,
@@ -1399,14 +1399,14 @@ if raw_df is not None:
                         if c["title"] not in existing_titles:
                             st.session_state["dashboard_charts"].append(c)
 
-                    st.success("✅ Sent to **⚡ Auto Dashboard**! Go there to review and save to report.")
+                    st.success("Sent to **Auto Dashboard**! Go there to review and save to report.")
 
     # =====================================================
     # TAB 6 — AUTO DASHBOARD
     # =====================================================
 
     with tab6:
-        st.subheader("⚡ Hybrid Auto Dashboard")
+        st.subheader("Hybrid Auto Dashboard")
 
         # ── Session state init ────────────────────────────────────
         if "dashboard_charts" not in st.session_state:
@@ -1433,7 +1433,7 @@ if raw_df is not None:
         # ── Generate / Regenerate auto charts ────────────────────
         col_gen, col_clr = st.columns([2, 1])
         with col_gen:
-            if st.button("🔄 Generate Auto Charts", type="primary"):
+            if st.button("Generate Auto Charts", type="primary"):
                 if filtered_df.empty:
                     st.warning("No data available to generate charts.")
                     auto_charts = []
@@ -1452,7 +1452,7 @@ if raw_df is not None:
                 st.session_state["dashboard_charts"] = auto_charts + studio_charts
                 st.session_state["dashboard_generated"] = True
         with col_clr:
-            if st.button("🗑️ Clear All Charts"):
+            if st.button("Clear All Charts"):
                 st.session_state["dashboard_charts"] = []
                 st.session_state["dashboard_generated"] = False
 
@@ -1475,7 +1475,7 @@ if raw_df is not None:
         all_charts = st.session_state.get("dashboard_charts", [])
 
         if all_charts:
-            st.subheader(f"📊 Dashboard Charts ({len(all_charts)} total)")
+            st.subheader(f"Dashboard Charts ({len(all_charts)} total)")
 
             # Two charts per row
             pinned_ids = set()
@@ -1486,7 +1486,7 @@ if raw_df is not None:
                 for col_ui, chart in zip(cols, row_charts):
                     with col_ui:
                         # Source badge
-                        badge = "🤖 Auto" if chart.get("source") == "auto" else "🎨 Studio"
+                        badge = "Auto" if chart.get("source") == "auto" else "Studio"
                         pin_label = "📌 Pinned" if chart.get("pinned", True) else "📍 Unpinned"
 
                         # Title bar
@@ -1518,7 +1518,7 @@ if raw_df is not None:
             st.divider()
 
             # ── Save Report ───────────────────────────────────────
-            st.subheader("💾 Save Report")
+            st.subheader("Save Report")
             pinned_charts = [c for c in all_charts if c.get("pinned", True)]
             st.caption(f"{len(pinned_charts)} pinned chart(s) will be saved in the report.")
 
@@ -1532,7 +1532,7 @@ if raw_df is not None:
             with r_col2:
                 st.write("")
                 st.write("")
-                if st.button("💾 Save Report", type="primary"):
+                if st.button("Save Report", type="primary"):
                     if not report_name.strip():
                         st.warning("Please enter a report name.")
                     elif not pinned_charts:
@@ -1549,7 +1549,7 @@ if raw_df is not None:
                             "insights": all_insights,
                             "kpis":     metrics,
                         }
-                        st.success(f"✅ Report **'{report_name}'** saved with {len(pinned_charts)} chart(s)!")
+                        st.success(f"Report **'{report_name}'** saved with {len(pinned_charts)} chart(s)!")
 
         else:
             st.info("Click **Generate Auto Charts** to build your dashboard.")
@@ -1557,31 +1557,31 @@ if raw_df is not None:
         st.divider()
 
         # ── AI Insights (live + ML + Query) ──────────────────────
-        st.subheader("💡 Insights")
+        st.subheader("Insights")
 
         # ML prediction insights
         ml_ins_list = st.session_state.get("dashboard_ml_insights", [])
         if ml_ins_list:
-            st.markdown("**🤖 ML Predictions**")
+            st.markdown("**ML Predictions**")
             for ins in ml_ins_list:
                 st.success(ins)
 
         # Query insights
         q_ins_list = st.session_state.get("dashboard_query_insights", [])
         if q_ins_list:
-            st.markdown("**🔍 Query Results**")
+            st.markdown("**Query Results**")
             for ins in q_ins_list:
                 st.info(ins)
 
         # Auto insights
-        st.markdown("**📊 Data Insights**")
+        st.markdown("**Data Insights**")
         auto_insights = generate_insights(filtered_df)
         for ins in auto_insights:
             st.info(ins)
 
         # Clear insights button
         if ml_ins_list or q_ins_list:
-            if st.button("🗑️ Clear ML & Query Insights"):
+            if st.button("Clear ML & Query Insights"):
                 st.session_state["dashboard_ml_insights"]    = []
                 st.session_state["dashboard_query_insights"] = []
                 st.rerun()
@@ -1592,21 +1592,21 @@ if raw_df is not None:
 
     with tab7:
         saved = st.session_state.get("saved_reports", {})
-        st.subheader("📁 My Reports")
+        st.subheader("My Reports")
 
         if not saved:
-            st.info("No reports saved yet. Go to **⚡ Auto Dashboard**, pin your charts, and click **Save Report**.")
+            st.info("No reports saved yet. Go to ** Auto Dashboard**, pin your charts, and click **Save Report**.")
         else:
             left_col, right_col = st.columns([1, 3])
 
             with left_col:
-                st.markdown("### 📂 Reports")
+                st.markdown("Reports")
                 st.caption(f"{len(saved)} report(s) saved")
                 st.divider()
 
                 for rname in list(saved.keys()):
                     n_charts = len(saved[rname].get("charts", []))
-                    if st.button(f"📄 {rname}  ·  {n_charts} chart(s)", key=f"rpt_btn_{rname}", use_container_width=True):
+                    if st.button(f"{rname}  ·  {n_charts} chart(s)", key=f"rpt_btn_{rname}", use_container_width=True):
                         st.session_state["active_report"] = rname
 
                 if not st.session_state.get("active_report") or st.session_state["active_report"] not in saved:
@@ -1618,9 +1618,9 @@ if raw_df is not None:
 
                 h_col, del_col = st.columns([4, 1])
                 with h_col:
-                    st.markdown(f"## 📊 {report_choice}")
+                    st.markdown(f"{report_choice}")
                 with del_col:
-                    if st.button("🗑️ Delete", key=f"del_rpt_{report_choice}"):
+                    if st.button("Delete", key=f"del_rpt_{report_choice}"):
                         del st.session_state["saved_reports"][report_choice]
                         st.session_state.pop("active_report", None)
                         st.rerun()
@@ -1644,7 +1644,7 @@ if raw_df is not None:
                     cols = st.columns(len(row))
                     for col_ui, chart in zip(cols, row):
                         with col_ui:
-                            badge = "🤖 Auto" if chart.get("source") == "auto" else "🎨 Studio"
+                            badge = "Auto" if chart.get("source") == "auto" else "Studio"
                             st.caption(f"{badge}  |  {chart['title']}")
                             _fig = _json_to_fig(chart["fig_json"]) if "fig_json" in chart else chart.get("fig")
                             if _fig:
@@ -1653,14 +1653,14 @@ if raw_df is not None:
                 st.divider()
 
                 # Insights
-                st.markdown("### 💡 Insights")
+                st.markdown("Insights")
                 for ins in rpt.get("insights", []):
                     st.info(ins)
 
                 st.divider()
 
                 # Export Report
-                st.markdown("### ⬇️ Export Report")
+                st.markdown("⬇️Export Report")
                 fmt_col, btn_col = st.columns([2,1])
                 with fmt_col:
                     export_fmt = st.radio(
@@ -1671,7 +1671,7 @@ if raw_df is not None:
                     )
                 with btn_col:
                     st.write("")
-                    gen_export = st.button("📥 Generate", key=f"gen_{report_choice}", type="primary")
+                    gen_export = st.button("Generate", key=f"gen_{report_choice}", type="primary")
 
                 if gen_export:
                     try:

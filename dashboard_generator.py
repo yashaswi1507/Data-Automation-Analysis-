@@ -198,9 +198,9 @@ def generate_insights(df):
     total_missing = df.isnull().sum().sum()
     if total_missing > 0:
         pct = round(total_missing / df.size * 100, 1)
-        insights.append(f"⚠️ Dataset has {total_missing:,} missing values ({pct}% of all cells)")
+        insights.append(f"Dataset has {total_missing:,} missing values ({pct}% of all cells)")
     else:
-        insights.append("✅ No missing values found in the dataset")
+        insights.append("No missing values found in the dataset")
 
     for col in numeric_cols[:4]:
         s        = df[col].dropna()
@@ -209,11 +209,11 @@ def generate_insights(df):
         max_val  = s.max()
         min_val  = s.min()
 
-        insights.append(f"📊 **{col}**: mean={mean_val:,}, range=[{min_val:,} – {max_val:,}]")
+        insights.append(f"**{col}**: mean={mean_val:,}, range=[{min_val:,} – {max_val:,}]")
 
         if abs(skewness) > 1.5:
             direction = "right (positive)" if skewness > 0 else "left (negative)"
-            insights.append(f"↗️ **{col}** is heavily skewed {direction} (skew={skewness:.2f}) — outliers likely present")
+            insights.append(f"**{col}** is heavily skewed {direction} (skew={skewness:.2f}) — outliers likely present")
 
         # Outlier count via IQR
         Q1, Q3 = s.quantile(0.25), s.quantile(0.75)
@@ -238,7 +238,7 @@ def generate_insights(df):
             top = pairs[0]
             direction = "positively" if top[2] > 0 else "negatively"
             insights.append(
-                f"🔗 Strongest correlation: **{top[0]}** & **{top[1]}** are {direction} correlated (r={top[2]:.2f})"
+                f"Strongest correlation: **{top[0]}** & **{top[1]}** are {direction} correlated (r={top[2]:.2f})"
             )
 
     # Categorical dominance
@@ -248,6 +248,6 @@ def generate_insights(df):
             top_val = vc.index[0]
             top_pct = round(vc.iloc[0] / len(df) * 100, 1)
             if top_pct > 50:
-                insights.append(f"📌 **{col}**: '{top_val}' dominates with {top_pct}% of rows")
+                insights.append(f"**{col}**: '{top_val}' dominates with {top_pct}% of rows")
 
     return insights
