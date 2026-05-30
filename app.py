@@ -196,6 +196,40 @@ def _suggest_target_column(df):
     reason_str = " | ".join(best_reasons[:2]) if best_reasons else "best candidate in dataset"
     return best_col, reason_str, scores_dict
 
+
+def _filter_useful_charts(charts, df):
+    """
+    Remove auto-generated charts that make no sense:
+    - ID vs anything (high cardinality unique cols)
+    - Name vs anything
+    - Two identical columns
+    """
+    id_like_cols = set()
+    for col in df.columns:
+        s = df[col].dropna()
+        if s.nunique() / max(len(s), 1) > 0.9:
+            id_like_cols.add(col.lower())
+
+    name_keywords = {"name","id","index","key","code","no","num","serial"}
+
+    useful = []
+    for chart in charts:
+        title = chart.get("title","").lower()
+        skip  = False
+        for kw in name_keywords:
+            if kw in title.split():
+                skip = True
+                break
+        for col in id_like_cols:
+            if col in title:
+                skip = True
+                break
+        if not skip:
+            useful.append(chart)
+
+    # If all filtered out, return original (better than empty dashboard)
+    return useful if useful else charts
+
 # =========================================================
 # PAGE CONFIG
 # =========================================================
@@ -1713,7 +1747,7 @@ Message:
                     if not report_name.strip():
                         st.warning("Please enter a report name.")
                     elif not pinned_charts:
-                        st.warning("Pin at least one chart before saving.")
+                        st.warning("⚠️ No charts pinned! Click 📌 on charts you want, then save.")
                     else:
                         # Combine all insights
                         all_insights = (
@@ -1772,7 +1806,12 @@ Message:
         st.subheader("📁 My Reports")
 
         if not saved:
-            st.info("No reports saved yet. Go to **⚡ Auto Dashboard**, pin your charts, and click **Save Report**.")
+            st.info("""**No reports saved yet.** How to create one:
+1. Go to **⚡ Auto Dashboard** tab
+2. Charts auto-generate — review them
+3. Click **📌** on charts you want to keep
+4. Enter a name → click **💾 Save Report**
+5. Come back here to view and export""")
         else:
             left_col, right_col = st.columns([1, 3])
 
@@ -1841,14 +1880,17 @@ Message:
                 fmt_col, btn_col = st.columns([2,1])
                 with fmt_col:
                     export_fmt = st.radio(
-                        "Format",
-                        ["HTML", "PDF", "PPT"],
+                        "Export format:",
+                        ["HTML (interactive)", "PDF (printable)", "PPT (slides)"],
                         horizontal=True,
                         key=f"fmt_{report_choice}",
+                        help="Select format, then click Generate",
                     )
+                    export_fmt = export_fmt.split(" ")[0]
                 with btn_col:
                     st.write("")
-                    gen_export = st.button("📥 Generate", key=f"gen_{report_choice}", type="primary")
+                    st.write("")
+                    gen_export = st.button(f"📥 Generate {export_fmt}", key=f"gen_{report_choice}", type="primary")
 
                 if gen_export:
                     try:
