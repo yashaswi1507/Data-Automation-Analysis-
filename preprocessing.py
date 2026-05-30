@@ -310,7 +310,7 @@ class DataPreprocessor:
                     self.df[f"{col}_Part2"] = right
                     new_cols = [f"{col}_Part1", f"{col}_Part2"]
 
-                self.report.append(f"Split '{col}' → {new_cols}")
+                self.report.append(f"✔ Split '{col}' → {new_cols}")
 
                 # Fill each new column by its own personality
                 for nc in new_cols:
@@ -319,7 +319,7 @@ class DataPreprocessor:
                 to_drop.append(col)
 
             except Exception as e:
-                self.report.append(f"Could not split '{col}': {e}")
+                self.report.append(f"⚠ Could not split '{col}': {e}")
 
         if to_drop:
             self.df.drop(columns=to_drop, inplace=True)
@@ -364,7 +364,9 @@ class DataPreprocessor:
         before  = len(self.df)
         self.df.drop_duplicates(inplace=True)
         removed = before - len(self.df)
-        self.report.append(f"✔ Removed {removed} duplicate row(s)")
+        if removed > 0:
+            self.report.append(f"✔ Removed {removed} duplicate row(s)")
+        # Don't show message if no duplicates — avoids confusion
 
     # ─────────────────────────────────────────────────────────────
     # STEP 6 — HANDLE OUTLIERS (numeric only, personality-aware)
@@ -400,7 +402,7 @@ class DataPreprocessor:
                         f"✔ '{col}' → capped {n_out} outlier(s) [{round(lower,2)}, {round(upper,2)}]"
                     )
             except Exception as e:
-                self.report.append(f"Outlier skipped for '{col}': {e}")
+                self.report.append(f"⚠ Outlier skipped for '{col}': {e}")
 
     # ─────────────────────────────────────────────────────────────
     # MAIN
@@ -409,37 +411,37 @@ class DataPreprocessor:
     def process(self):
         # Edge case guards
         if self.df.empty:
-            self.report.append("Empty dataset — nothing to process.")
+            self.report.append("⚠️ Empty dataset — nothing to process.")
             return self.df, self.report
         if self.df.shape[1] == 0:
-            self.report.append("No columns found.")
+            self.report.append("⚠️ No columns found.")
             return self.df, self.report
 
         missing_before = int(self.df.isnull().sum().sum())
-        self.report.append(f"Rows: {len(self.df)}  |  Columns: {self.df.shape[1]}")
-        self.report.append(f"Missing before: {missing_before}")
+        self.report.append(f"📋 Rows: {len(self.df)}  |  Columns: {self.df.shape[1]}")
+        self.report.append(f"📋 Missing before: {missing_before}")
         self.report.append("─" * 50)
 
         try: self._standardize()
-        except Exception as e: self.report.append(f"Standardize skipped: {e}")
+        except Exception as e: self.report.append(f"⚠️ Standardize skipped: {e}")
 
         try: self._split_structured()
-        except Exception as e: self.report.append(f"Split skipped: {e}")
+        except Exception as e: self.report.append(f"⚠️ Split skipped: {e}")
 
         try: self._convert_numerics()
-        except Exception as e: self.report.append(f"Numeric convert skipped: {e}")
+        except Exception as e: self.report.append(f"⚠️ Numeric convert skipped: {e}")
 
         try: self._handle_missing()
-        except Exception as e: self.report.append(f"Missing fill skipped: {e}")
+        except Exception as e: self.report.append(f"⚠️ Missing fill skipped: {e}")
 
         try: self._remove_duplicates()
-        except Exception as e: self.report.append(f"Dedup skipped: {e}")
+        except Exception as e: self.report.append(f"⚠️ Dedup skipped: {e}")
 
         try: self._handle_outliers()
-        except Exception as e: self.report.append(f"Outlier handling skipped: {e}")
+        except Exception as e: self.report.append(f"⚠️ Outlier handling skipped: {e}")
 
         missing_after = int(self.df.isnull().sum().sum())
         self.report.append("─" * 50)
-        self.report.append(f"Done  |  Rows: {len(self.df)}  |  Columns: {self.df.shape[1]}")
-        self.report.append(f"Missing after: {missing_after}")
+        self.report.append(f"✅ Done  |  Rows: {len(self.df)}  |  Columns: {self.df.shape[1]}")
+        self.report.append(f"✅ Missing after: {missing_after}")
         return self.df, self.report
