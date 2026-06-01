@@ -71,6 +71,23 @@ def prepare_features(df, target):
     # Remove constant columns
     X = X.loc[:, X.nunique() > 1]
 
+    # Remove ID-like columns (high cardinality unique — useless as features)
+    n = len(X)
+    id_cols = [
+        c for c in X.columns
+        if X[c].nunique() / max(n, 1) > 0.95  # nearly all unique
+    ]
+    if id_cols:
+        X = X.drop(columns=id_cols)
+
+    # Remove pure text/name columns (object with high cardinality)
+    text_cols = [
+        c for c in X.select_dtypes(include="object").columns
+        if X[c].nunique() / max(n, 1) > 0.5
+    ]
+    if text_cols:
+        X = X.drop(columns=text_cols)
+
     # Encode categorical columns
     label_encoders = {}
     for col in X.select_dtypes(include=["object", "category"]).columns:

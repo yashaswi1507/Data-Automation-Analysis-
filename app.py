@@ -263,14 +263,15 @@ with col_upload:
 with col_url:
     dataset_url = st.text_input(
         "🔗 Or paste a URL",
-        placeholder="https://example.com/data.csv  |  kaggle.com/datasets/...",
-        help="Paste a direct CSV/Excel URL, Kaggle dataset URL, or JSON API endpoint",
+        placeholder="e.g. https://raw.githubusercontent.com/.../data.csv",
+        help="Supported: Direct CSV/Excel URL | Kaggle dataset URL | JSON API | ZIP file URL",
     )
     if dataset_url:
-        # Basic URL validation
         if not (dataset_url.startswith("http://") or dataset_url.startswith("https://")):
             st.warning("⚠️ URL must start with http:// or https://")
             dataset_url = ""
+        else:
+            st.success("✅ URL valid — click Load Data to proceed")
 
 raw_df = None
 
@@ -628,6 +629,22 @@ Message:
     # TABS
     # =====================================================
 
+    # Tab guide for new users
+    with st.expander("📖 How to use this tool?", expanded=False):
+        st.markdown("""
+| Tab | What it does |
+|-----|-------------|
+| 📊 **Dashboard** | Overview — raw vs cleaned data, cleaning report |
+| 📋 **Summary** | Statistics — averages, min, max, missing values |
+| 📈 **Visualization** | Build charts — bar, line, scatter, pie, heatmap |
+| 🔍 **Query Engine** | Ask questions — "average salary by department" |
+| 🤖 **ML Prediction** | Train a model and predict values |
+| ⚡ **Auto Dashboard** | Auto-generated charts — pin and save to report |
+| 📁 **My Reports** | View and export your saved reports (HTML/PDF/PPT) |
+
+**Recommended flow:** Dashboard → Summary → Visualization → Auto Dashboard → My Reports
+        """)
+
     tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
         "📊 Dashboard", "📋 Summary", "📈 Visualization Studio",
         "🔍 Query Engine", "🤖 ML Prediction", "⚡ Auto Dashboard", "📁 My Reports"
@@ -801,10 +818,27 @@ Message:
             return sampled, len(df)
 
         # ── Chart type selector ───────────────────────────────────────
-        chart_type = st.selectbox("Choose Chart Type", [
-            "Bar Chart", "Line Chart", "Scatter Plot",
-            "Histogram", "Box Plot", "Pie Chart", "Correlation Heatmap"
-        ])
+        chart_type = st.selectbox(
+            "Choose Chart Type",
+            [
+                "Bar Chart",
+                "Line Chart",
+                "Scatter Plot",
+                "Histogram",
+                "Box Plot",
+                "Pie Chart",
+                "Correlation Heatmap",
+            ],
+            help=(
+                "Bar: compare values across categories | "
+                "Line: show trends over time | "
+                "Scatter: find relationships between two numbers | "
+                "Histogram: see how values are distributed | "
+                "Box: see median and outliers | "
+                "Pie: show proportions | "
+                "Heatmap: see correlations between all numeric columns"
+            ),
+        )
 
         st.divider()
 
@@ -1376,7 +1410,8 @@ Message:
                         key=f"ml_input_{feat}"
                     )
 
-            if st.button("🎯 Predict", type="primary"):
+            st.divider()
+            if st.button("🎯 Predict", type="primary", use_container_width=True):
                 try:
                     pred = predict_single(ml_result, input_values)
 
@@ -1755,12 +1790,16 @@ Message:
                             st.session_state.get("dashboard_query_insights", []) +
                             generate_insights(filtered_df)
                         )
-                        st.session_state["saved_reports"][report_name.strip()] = {
-                            "charts":   pinned_charts,
-                            "insights": all_insights,
-                            "kpis":     metrics,
-                        }
-                        st.success(f"✅ Report **'{report_name}'** saved with {len(pinned_charts)} chart(s)!")
+                        rname = report_name.strip()
+                        if rname in st.session_state["saved_reports"]:
+                            st.warning(f"⚠️ Report '{rname}' already exists. Choose a different name.")
+                        else:
+                            st.session_state["saved_reports"][rname] = {
+                                "charts":   pinned_charts,
+                                "insights": all_insights,
+                                "kpis":     metrics,
+                            }
+                            st.success(f"✅ Report **'{rname}'** saved with {len(pinned_charts)} chart(s)!")
 
         else:
             st.info("Click **Generate Auto Charts** to build your dashboard.")
