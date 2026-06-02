@@ -391,10 +391,21 @@ if file is not None:
                 st.session_state["raw_df"]           = loaded
                 st.session_state["loaded_file_name"] = file.name
                 st.session_state["data_loaded"]      = True
-                st.toast(f"✅ {file.name} loaded successfully!", icon="📂")
+                st.session_state["data_proceed"]     = False  # reset proceed on new file
+                st.toast(f"✅ {file.name} loaded! Click Proceed to analyse.", icon="📂")
                 st.rerun()
 
-    raw_df = st.session_state.get("raw_df")
+    # Show Proceed button after file is loaded
+    if st.session_state.get("loaded_file_name") == file.name:
+        st.success(f"✅ **{file.name}** ready — click Proceed to analyse")
+        if st.button("🚀 Proceed with this file", type="primary", use_container_width=True):
+            st.session_state["data_proceed"] = True
+        if not st.session_state.get("data_proceed"):
+            raw_df = None
+        else:
+            raw_df = st.session_state.get("raw_df")
+    else:
+        raw_df = st.session_state.get("raw_df")
 
 elif dataset_url:
     if st.button("🔍 Load Data from URL", type="primary"):
