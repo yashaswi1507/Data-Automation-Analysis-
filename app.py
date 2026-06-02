@@ -788,6 +788,35 @@ Message:
     with tab2:
         show_summary(filtered_df, st)
 
+        # ── Missing value fill report ─────────────────────────
+        st.divider()
+        st.subheader("🔧 How Missing Values Were Filled")
+
+        fill_rows = []
+        for r in report:
+            if "missing)" in r and "↳" not in r and "Dropped" not in r:
+                # Parse lines like: ✔ 'age' (10 missing) → filled with mode = 28.0
+                try:
+                    col_part  = r.split("'")[1] if "'" in r else ""
+                    miss_part = r.split("(")[1].split(" missing")[0] if "(" in r else ""
+                    fill_part = r.split("→ filled with ")[-1] if "→ filled with " in r else ""
+                    if col_part and fill_part:
+                        fill_rows.append({
+                            "Column":         col_part,
+                            "Missing Count":  miss_part,
+                            "Filled With":    fill_part.strip(),
+                        })
+                except Exception:
+                    pass
+
+        if fill_rows:
+            import pandas as pd
+            fill_df = pd.DataFrame(fill_rows)
+            st.dataframe(fill_df, use_container_width=True, hide_index=True)
+            st.caption("This table shows what value was used to fill each column's missing data.")
+        else:
+            st.info("✅ No missing values were filled — dataset was already clean!")
+
     # =====================================================
     # TAB 3 — VISUALIZATION STUDIO
     # =====================================================
