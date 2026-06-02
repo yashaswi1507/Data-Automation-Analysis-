@@ -385,15 +385,13 @@ if file is not None:
                     st.error("❌ Could not read ZIP file.")
 
             if loaded is not None:
+                for key in list(st.session_state.keys()):
+                    if key not in ["feedback_log", "saved_reports"]:
+                        del st.session_state[key]
                 st.session_state["raw_df"]           = loaded
                 st.session_state["loaded_file_name"] = file.name
                 st.session_state["data_loaded"]      = True
-                # Clear previous session on new file
-                for key in ["dashboard_generated","ml_result","ml_target","last_prediction",
-                            "dashboard_charts","dashboard_ml_insights","dashboard_query_insights"]:
-                    if key in st.session_state:
-                        del st.session_state[key]
-                st.toast(f"✅ {file.name} loaded successfully!", icon="📂")
+                st.toast(f"✅ {file.name} loaded!", icon="📂")
 
     raw_df = st.session_state.get("raw_df")
 
@@ -1677,12 +1675,13 @@ Message:
                     auto_charts = []
                 else:
                     auto_charts = generate_auto_charts(filtered_df)
-                # Merge: keep studio charts, replace auto charts
+                auto_charts = _filter_useful_charts(auto_charts, filtered_df)
+                type_priority = {"bar":1,"histogram":2,"scatter":3,"box":4,"pie":5,"heatmap":6,"line":7}
+                auto_charts.sort(key=lambda c: type_priority.get(c.get("chart_type",""), 9))
                 studio_charts = [
                     c for c in st.session_state["dashboard_charts"]
-                    if c.get("source") == "studio"
+                    if c.get("source") != "auto"
                 ]
-                # Convert fig objects to JSON for memory efficiency
                 for c in auto_charts:
                     if "fig" in c and "fig_json" not in c:
                         c["fig_json"] = _fig_to_json(c["fig"])
@@ -1696,12 +1695,15 @@ Message:
 
         # Auto-generate on first load
         if not st.session_state["dashboard_generated"] and len(filtered_df) > 0:
-            with st.spinner("Generating charts..."):
+            with st.spinner("📊 Generating smart charts..."):
                 auto_charts = generate_auto_charts(filtered_df)
             studio_charts = [
                 c for c in st.session_state["dashboard_charts"]
-                if c.get("source") == "studio"
+                if c.get("source") != "auto"
             ]
+            auto_charts = _filter_useful_charts(auto_charts, filtered_df)
+            type_priority = {"bar":1,"histogram":2,"scatter":3,"box":4,"pie":5,"heatmap":6,"line":7}
+            auto_charts.sort(key=lambda c: type_priority.get(c.get("chart_type",""), 9))
             for c in auto_charts:
                 if "fig" in c and "fig_json" not in c:
                     c["fig_json"] = _fig_to_json(c["fig"])
