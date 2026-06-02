@@ -391,7 +391,8 @@ if file is not None:
                 st.session_state["raw_df"]           = loaded
                 st.session_state["loaded_file_name"] = file.name
                 st.session_state["data_loaded"]      = True
-                st.toast(f"✅ {file.name} loaded!", icon="📂")
+                st.toast(f"✅ {file.name} loaded successfully!", icon="📂")
+                st.rerun()
 
     raw_df = st.session_state.get("raw_df")
 
@@ -418,6 +419,11 @@ else:
 
 if raw_df is not None:
 
+    # Show what was loaded
+    fname = st.session_state.get("loaded_file_name", "")
+    if fname:
+        st.success(f"📂 **{fname}** — {raw_df.shape[0]:,} rows × {raw_df.shape[1]} columns loaded")
+
     # ── Edge case: empty dataset ──────────────────────────────
     if raw_df.empty:
         st.error("⚠️ The uploaded file is empty. Please upload a file with data.")
@@ -436,10 +442,12 @@ if raw_df is not None:
     # SIDEBAR
     # =====================================================
 
-    st.sidebar.title("Controls")
+    st.sidebar.title("⚙️ Controls")
+    st.sidebar.caption(f"Dataset: **{st.session_state.get('loaded_file_name','Unknown')}**")
+    st.sidebar.divider()
 
     # ── Outliers ────────────────────────────────────────
-    st.sidebar.subheader("Outlier Handling")
+    st.sidebar.subheader("📉 Outlier Handling")
     outlier_option = st.sidebar.selectbox(
         "Handle Outliers",
         ["No Action", "Remove Outliers", "Cap Outliers"]
@@ -448,7 +456,7 @@ if raw_df is not None:
     st.sidebar.divider()
 
     # ── Missing Values — Auto by default ─────────────────
-    st.sidebar.subheader("Missing Value Handling")
+    st.sidebar.subheader("🔧 Missing Value Handling")
 
     manual_override = st.sidebar.toggle(
         "Manual Override",
@@ -468,7 +476,7 @@ if raw_df is not None:
         st.sidebar.info("⚙️ Manual override active — numeric columns will use your chosen method.")
     else:
         missing_option = "Auto"
-        st.sidebar.success("✅ Auto mode — each column filled by its data personality.")
+        st.sidebar.success("✅ Auto mode — each column filled smartly based on its data type.")
 
     st.sidebar.divider()
 
@@ -494,13 +502,13 @@ if raw_df is not None:
     dataset_profile = "general"
     column_profiles = {}
 
-    with st.spinner("🔍 Analysing dataset..."):
+    with st.spinner("🔍 Analysing dataset columns..."):
         try:
             dataset_profile, column_profiles = run_profiler(df_hash, df)
         except Exception as e:
             st.warning(f"Profiler Warning: {e}")
 
-    with st.spinner("🧹 Cleaning data..."):
+    with st.spinner("🧹 Cleaning data intelligently..."):
         try:
             clean_df, report = run_preprocessing(df_hash, df, outlier_option, missing_option, dataset_profile, column_profiles)
         except Exception as e:
@@ -511,7 +519,7 @@ if raw_df is not None:
     # SIDEBAR FILTERS
     # =====================================================
 
-    st.sidebar.subheader("Filters")
+    st.sidebar.subheader("🔍 Filters")
     filtered_df = clean_df.copy()
 
     try:
@@ -653,7 +661,10 @@ Message:
     # =====================================================
 
     with tab1:
-        st.subheader("Dashboard Overview")
+        fname = st.session_state.get("loaded_file_name","")
+        st.subheader(f"Dashboard Overview")
+        if fname:
+            st.caption(f"📂 File: **{fname}**  |  {len(filtered_df):,} rows × {filtered_df.shape[1]} cols after cleaning")
 
         # Dataset type badge
         type_colors = {
@@ -707,10 +718,12 @@ Message:
 
         # Summary bar
         col_a, col_b, col_c, col_d = st.columns(4)
-        col_a.metric("Columns Split",    len(split_lines))
-        col_b.metric("Columns Filled",   len([l for l in fill_lines if "↳" not in l]))
-        col_c.metric("Duplicates",       next((l.split(": ")[-1] for l in dup_lines if "Removed" in l), "0"))
-        col_d.metric("Outlier Actions",  len(outlier_lines))
+        filled_count = len([l for l in fill_lines if "↳" not in l])
+        dup_removed  = next((l.split("Removed ")[-1].split(" dup")[0] for l in dup_lines if "Removed" in l), "0")
+        col_a.metric("Columns Split",   len(split_lines),   help="Structured codes split into 2 columns")
+        col_b.metric("Columns Filled",  filled_count,       help="Missing values filled automatically")
+        col_c.metric("Duplicates",      dup_removed,        help="Duplicate rows removed")
+        col_d.metric("Outlier Actions", len(outlier_lines), help="Outliers removed or capped")
 
         st.divider()
 
