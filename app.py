@@ -761,14 +761,15 @@ Message:
 | ⚡ **Auto Dashboard** | Auto-generated charts — pin and save to report |
 | 📁 **My Reports** | View and export your saved reports (HTML/PDF/PPT) |
 | 📅 **Forecasting** | Predict future values from time-based data |
+| 🔬 **Advanced** | Anomaly detection, What-If analysis, Data merge, Goal tracking |
 
 **Recommended flow:** Dashboard → Summary → Visualization → Auto Dashboard → My Reports
         """)
 
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
         "📊 Dashboard", "📋 Summary", "📈 Visualization Studio",
         "🔍 Query Engine", "🤖 ML Prediction", "⚡ Auto Dashboard",
-        "📁 My Reports", "📅 Forecasting"
+        "📁 My Reports", "📅 Forecasting", "🔬 Advanced"
     ])
 
     # =====================================================
@@ -2273,3 +2274,268 @@ Message:
             st.error("Forecasting engine not found. Make sure timeseries_engine.py is in your project.")
         except Exception as e:
             st.error(f"Forecasting error: {e}")
+
+    # =====================================================
+    # TAB 9 — ADVANCED FEATURES
+    # =====================================================
+
+    with tab9:
+        st.subheader("🔬 Advanced Analysis")
+
+        adv1, adv2, adv3, adv4 = st.tabs([
+            "🚨 Anomaly Detection",
+            "🎯 What-If Analysis",
+            "🔗 Data Merge",
+            "🏆 Goal Tracker",
+        ])
+
+        # ─────────────────────────────────────────────────
+        # ANOMALY DETECTION
+        # ─────────────────────────────────────────────────
+        with adv1:
+            st.subheader("🚨 Anomaly Detection")
+            st.caption("Automatically find unusual spikes, drops, or outliers in your data.")
+
+            try:
+                from anomaly_engine import detect_anomalies, explain_anomaly
+
+                a1, a2 = st.columns(2)
+                method    = a1.selectbox("Detection Method", ["iqr","zscore","both"],
+                    format_func=lambda x: {"iqr":"IQR (Box Method)","zscore":"Z-Score","both":"Both Methods"}[x],
+                    key="anomaly_method")
+                threshold = a2.slider("Z-Score Threshold", 1.5, 4.0, 2.5, 0.5, key="anomaly_thresh")
+
+                if st.button("🔍 Detect Anomalies", type="primary"):
+                    with st.spinner("Scanning for anomalies..."):
+                        anomalies = detect_anomalies(filtered_df, method=method, threshold=threshold)
+                    st.session_state["anomaly_results"] = anomalies
+
+                if "anomaly_results" in st.session_state:
+                    anomalies = st.session_state["anomaly_results"]
+
+                    if not anomalies:
+                        st.success("✅ No anomalies detected in your dataset!")
+                    else:
+                        total = sum(len(v) for v in anomalies.values())
+                        st.warning(f"⚠️ Found **{total}** anomalies across **{len(anomalies)}** column(s)")
+
+                        for col, idx_list in anomalies.items():
+                            with st.expander(f"📊 {col} — {len(idx_list)} anomaly/anomalies", expanded=True):
+                                # Chart with anomalies marked
+                                s = filtered_df[col].dropna().reset_index(drop=True)
+                                fig_a = px.line(y=s.values, template="plotly_white",
+                                               title=f"{col} — anomalies highlighted in red")
+                                fig_a.update_traces(line_color="#636EFA", name="Normal")
+
+                                # Mark anomalies as red dots
+                                anom_vals = filtered_df.loc[idx_list, col]
+                                anom_pos  = [filtered_df.index.get_loc(i) for i in idx_list if i in filtered_df.index]
+                                if anom_pos:
+                                    fig_a.add_trace(go.Scatter(
+                                        x=anom_pos,
+                                        y=anom_vals.values,
+                                        mode="markers",
+                                        marker=dict(color="red", size=10, symbol="x"),
+                                        name="Anomaly",
+                                    ))
+                                fig_a.update_layout(height=350)
+                                st.plotly_chart(fig_a, use_container_width=True)
+
+                                # Explain top anomalies
+                                st.markdown("**Top anomalies explained:**")
+                                for i, idx in enumerate(idx_list[:5]):
+                                    try:
+                                        explanation = explain_anomaly(filtered_df, col, idx)
+                                        st.info(f"Row {idx}: {explanation}")
+                                    except Exception:
+                                        pass
+
+            except Exception as e:
+                st.error(f"Anomaly detection error: {e}")
+
+        # ─────────────────────────────────────────────────
+        # WHAT-IF ANALYSIS
+        # ─────────────────────────────────────────────────
+        with adv2:
+            st.subheader("🎯 What-If Analysis")
+            st.caption("Change values with sliders and see how it affects other columns in real time.")
+
+            numeric_cols_wi = filtered_df.select_dtypes(include="number").columns.tolist()
+
+            if len(numeric_cols_wi) < 2:
+                st.warning("Need at least 2 numeric columns for What-If analysis.")
+            else:
+                wi_target = st.selectbox("📊 Column to watch (outcome)", numeric_cols_wi, key="wi_target",
+                                         index=len(numeric_cols_wi)-1)
+                wi_inputs = [c for c in numeric_cols_wi if c != wi_target]
+
+                st.markdown(f"**Adjust inputs → see how {wi_target} changes:**")
+
+                input_vals = {}
+                cols_per_row = 3
+                for i in range(0, len(wi_inputs), cols_per_row):
+                    batch = wi_inputs[i:i+cols_per_row]
+                    cols  = st.columns(len(batch))
+                    for col_ui, col in zip(cols, batch):
+                        s        = filtered_df[col].dropna()
+                        col_min  = float(s.min())
+                        col_max  = float(s.max())
+                        col_mean = float(s.mean())
+                        input_vals[col] = col_ui.slider(
+                            col, col_min, col_max, col_mean,
+                            step=max((col_max - col_min) / 100, 0.01),
+                            key=f"wi_{col}",
+                        )
+
+                # Predict using simple regression
+                try:
+                    from sklearn.linear_model import LinearRegression
+                    from sklearn.preprocessing import StandardScaler
+                    import numpy as np
+
+                    X = filtered_df[wi_inputs].dropna()
+                    y = filtered_df.loc[X.index, wi_target].dropna()
+                    X = X.loc[y.index]
+
+                    if len(X) >= 5:
+                        scaler  = StandardScaler()
+                        X_scaled = scaler.fit_transform(X)
+                        model   = LinearRegression().fit(X_scaled, y)
+
+                        input_arr   = np.array([[input_vals[c] for c in wi_inputs]])
+                        input_scaled = scaler.transform(input_arr)
+                        prediction  = model.predict(input_scaled)[0]
+
+                        actual_mean = float(y.mean())
+                        delta       = prediction - actual_mean
+
+                        st.divider()
+                        wi_c1, wi_c2, wi_c3 = st.columns(3)
+                        wi_c1.metric("Predicted " + wi_target, f"{prediction:,.2f}")
+                        wi_c2.metric("Dataset Average",        f"{actual_mean:,.2f}")
+                        wi_c3.metric("Difference",             f"{delta:+,.2f}",
+                                     delta=f"{delta/actual_mean*100:+.1f}%" if actual_mean != 0 else "")
+
+                        st.info(f"💡 With these input values, predicted **{wi_target}** = **{prediction:,.2f}** "
+                                f"({'higher' if delta > 0 else 'lower'} than dataset average by {abs(delta/actual_mean*100):.1f}%)")
+                    else:
+                        st.warning("Not enough data rows for prediction.")
+                except Exception as e:
+                    st.error(f"What-If calculation error: {e}")
+
+        # ─────────────────────────────────────────────────
+        # DATA MERGE
+        # ─────────────────────────────────────────────────
+        with adv3:
+            st.subheader("🔗 Merge Two Datasets")
+            st.caption("Join two CSV files on a common column — like Excel VLOOKUP.")
+
+            merge_file = st.file_uploader("Upload second dataset", type=["csv","xlsx"],
+                                           key="merge_file_upload")
+
+            if merge_file is not None:
+                try:
+                    if merge_file.name.endswith(".csv"):
+                        df2 = pd.read_csv(merge_file)
+                    else:
+                        df2 = pd.read_excel(merge_file, engine="openpyxl")
+
+                    st.success(f"✅ Second file: {merge_file.name} — {df2.shape[0]} rows × {df2.shape[1]} cols")
+
+                    m1, m2, m3 = st.columns(3)
+                    common_cols = list(set(filtered_df.columns) & set(df2.columns))
+
+                    merge_key = m1.selectbox("Join on column",
+                        common_cols if common_cols else filtered_df.columns.tolist(),
+                        key="merge_key")
+                    merge_how = m2.selectbox("Join type", ["inner","left","right","outer"],
+                        format_func=lambda x: {
+                            "inner": "Inner (only matching rows)",
+                            "left":  "Left (keep all from main)",
+                            "right": "Right (keep all from second)",
+                            "outer": "Outer (keep all rows)",
+                        }[x], key="merge_how")
+
+                    if st.button("🔗 Merge Datasets", type="primary"):
+                        try:
+                            merged = pd.merge(filtered_df, df2, on=merge_key, how=merge_how)
+                            st.success(f"✅ Merged! Result: {merged.shape[0]} rows × {merged.shape[1]} cols")
+                            st.dataframe(merged.head(20), use_container_width=True)
+                            st.download_button(
+                                "⬇️ Download Merged CSV",
+                                merged.to_csv(index=False).encode("utf-8"),
+                                "merged_data.csv", "text/csv",
+                            )
+                        except Exception as e:
+                            st.error(f"Merge failed: {e}")
+                except Exception as e:
+                    st.error(f"Could not read second file: {e}")
+            else:
+                st.info("Upload a second CSV/Excel file to merge with your current dataset.")
+
+        # ─────────────────────────────────────────────────
+        # GOAL TRACKER
+        # ─────────────────────────────────────────────────
+        with adv4:
+            st.subheader("🏆 Goal Tracker")
+            st.caption("Set a target for any numeric column and track progress.")
+
+            numeric_cols_gt = filtered_df.select_dtypes(include="number").columns.tolist()
+
+            if not numeric_cols_gt:
+                st.warning("No numeric columns found.")
+            else:
+                if "goals" not in st.session_state:
+                    st.session_state["goals"] = {}
+
+                # Add new goal
+                with st.expander("➕ Set a New Goal", expanded=True):
+                    g1, g2, g3 = st.columns(3)
+                    goal_col    = g1.selectbox("Column", numeric_cols_gt, key="goal_col")
+                    goal_metric = g2.selectbox("Measure by",
+                        ["sum","mean","max","min","count"],
+                        format_func=lambda x: {"sum":"Total","mean":"Average","max":"Maximum","min":"Minimum","count":"Count"}[x],
+                        key="goal_metric")
+                    current_val = float(getattr(filtered_df[goal_col].dropna(), goal_metric)())
+                    goal_target = g3.number_input("Target value", value=current_val * 1.2,
+                                                   key="goal_target")
+                    goal_name   = st.text_input("Goal name", value=f"{goal_col} {goal_metric}",
+                                                key="goal_name")
+
+                    if st.button("🎯 Add Goal", key="add_goal"):
+                        st.session_state["goals"][goal_name] = {
+                            "col": goal_col, "metric": goal_metric, "target": goal_target
+                        }
+                        st.success(f"✅ Goal '{goal_name}' added!")
+                        st.rerun()
+
+                # Show goals
+                goals = st.session_state.get("goals", {})
+                if goals:
+                    st.divider()
+                    st.markdown("### Your Goals")
+                    for gname, gdata in list(goals.items()):
+                        col       = gdata["col"]
+                        metric    = gdata["metric"]
+                        target    = gdata["target"]
+
+                        try:
+                            current = float(getattr(filtered_df[col].dropna(), metric)())
+                        except Exception:
+                            current = 0.0
+
+                        progress  = min(current / target, 1.0) if target != 0 else 0
+                        pct       = progress * 100
+                        status    = "🟢" if pct >= 100 else "🟡" if pct >= 70 else "🔴"
+
+                        gc1, gc2 = st.columns([3,1])
+                        with gc1:
+                            st.markdown(f"**{status} {gname}**")
+                            st.progress(progress)
+                            st.caption(f"Current: {current:,.2f} / Target: {target:,.2f} ({pct:.1f}%)")
+                        with gc2:
+                            if st.button("🗑️", key=f"del_goal_{gname}"):
+                                del st.session_state["goals"][gname]
+                                st.rerun()
+                else:
+                    st.info("No goals set yet. Add a goal above!")
