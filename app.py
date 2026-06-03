@@ -4,6 +4,7 @@ import os, io, glob, zipfile, requests, kagglehub
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import openpyxl
 from bs4 import BeautifulSoup
 
@@ -527,6 +528,107 @@ if raw_df is not None:
             clean_df, report = df.copy(), []
 
     # =====================================================
+    # CALCULATED COLUMNS
+    # =====================================================
+
+    st.sidebar.divider()
+    st.sidebar.subheader("🧮 Calculated Columns")
+
+    with st.sidebar.expander("➕ Add Formula Column", expanded=False):
+        numeric_col_list = clean_df.select_dtypes(include="number").columns.tolist()
+
+        st.caption("Available columns: " + ", ".join([f"`{c}`" for c in clean_df.columns.tolist()[:8]]))
+
+        new_col_name = st.text_input(
+            "New column name",
+            placeholder="e.g. profit_margin",
+            key="calc_col_name",
+        )
+        formula = st.text_input(
+            "Formula",
+            placeholder="e.g. revenue - cost",
+            key="calc_formula",
+            help="Use column names directly. Supports: + - * / ** () and math functions like abs(), round()"
+        )
+
+        # Show example based on available columns
+        if len(numeric_col_list) >= 2:
+            st.caption(f"💡 Example: `{numeric_col_list[-1]} / {numeric_col_list[0]}`")
+
+        if st.button("➕ Add Column", key="add_calc_col", use_container_width=True):
+            if not new_col_name.strip():
+                st.error("Enter a column name.")
+            elif not formula.strip():
+                st.error("Enter a formula.")
+            elif new_col_name.strip() in clean_df.columns:
+                st.error(f"Column '{new_col_name}' already exists.")
+            else:
+                try:
+                    import re
+                    # Build safe eval environment with column values
+                    eval_env = {}
+                    for col in clean_df.columns:
+                        safe_key = re.sub(r'[^a-zA-Z0-9_]', '_', col)
+                        eval_env[safe_key] = clean_df[col]
+                        eval_env[col]      = clean_df[col]  # also original name
+
+                    # Add math functions
+                    import numpy as np
+                    eval_env.update({
+                        "abs": np.abs, "round": np.round,
+                        "sqrt": np.sqrt, "log": np.log,
+                        "exp": np.exp, "max": np.maximum,
+                        "min": np.minimum,
+                    })
+
+                    result = eval(formula.strip(), {"__builtins__": {}}, eval_env)
+                    clean_df[new_col_name.strip()] = result
+
+                    # Also update filtered_df
+                    filtered_df[new_col_name.strip()] = result
+
+                    # Save to session state
+                    if "calc_columns" not in st.session_state:
+                        st.session_state["calc_columns"] = {}
+                    st.session_state["calc_columns"][new_col_name.strip()] = formula.strip()
+
+                    st.success(f"✅ Column **'{new_col_name}'** added!")
+                    st.rerun()
+
+                except Exception as e:
+                    st.error(f"❌ Formula error: {e}. Check column names and formula syntax.")
+
+        # Show existing calculated columns
+        calc_cols = st.session_state.get("calc_columns", {})
+        if calc_cols:
+            st.markdown("**Added columns:**")
+            for cname, cformula in calc_cols.items():
+                col1, col2 = st.columns([3, 1])
+                col1.caption(f"`{cname}` = {cformula}")
+                if col2.button("🗑️", key=f"del_calc_{cname}"):
+                    if cname in clean_df.columns:
+                        clean_df.drop(columns=[cname], inplace=True)
+                    if cname in filtered_df.columns:
+                        filtered_df.drop(columns=[cname], inplace=True)
+                    del st.session_state["calc_columns"][cname]
+                    st.rerun()
+
+    # Restore calculated columns if session has them
+    if "calc_columns" in st.session_state:
+        for cname, cformula in st.session_state["calc_columns"].items():
+            if cname not in clean_df.columns:
+                try:
+                    import re, numpy as np
+                    eval_env = {}
+                    for col in clean_df.columns:
+                        eval_env[col] = clean_df[col]
+                    eval_env.update({"abs":np.abs,"round":np.round,"sqrt":np.sqrt,"log":np.log})
+                    clean_df[cname]    = eval(cformula, {"__builtins__": {}}, eval_env)
+                    filtered_df[cname] = clean_df[cname]
+                except Exception:
+                    pass
+
+    # =====================================================
     # SIDEBAR FILTERS
     # =====================================================
 
@@ -658,13 +760,15 @@ Message:
 | 🤖 **ML Prediction** | Train a model and predict values |
 | ⚡ **Auto Dashboard** | Auto-generated charts — pin and save to report |
 | 📁 **My Reports** | View and export your saved reports (HTML/PDF/PPT) |
+| 📅 **Forecasting** | Predict future values from time-based data |
 
 **Recommended flow:** Dashboard → Summary → Visualization → Auto Dashboard → My Reports
         """)
 
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
         "📊 Dashboard", "📋 Summary", "📈 Visualization Studio",
-        "🔍 Query Engine", "🤖 ML Prediction", "⚡ Auto Dashboard", "📁 My Reports"
+        "🔍 Query Engine", "🤖 ML Prediction", "⚡ Auto Dashboard",
+        "📁 My Reports", "📅 Forecasting"
     ])
 
     # =====================================================
@@ -708,8 +812,16 @@ Message:
 
         # Raw data preview
         st.subheader("Raw Data Preview")
-        rows_to_show = st.slider("Rows to show", 5, 100, 10)
-        st.dataframe(raw_df.head(rows_to_show), use_container_width=True)
+        r1, r2 = st.columns([2,2])
+        rows_to_show = r1.slider("Rows to show", 5, 100, 10)
+        search_raw   = r2.text_input("🔍 Search", placeholder="Filter rows...", key="search_raw")
+        prev_raw = raw_df.head(rows_to_show).copy()
+        if search_raw:
+            mask = prev_raw.astype(str).apply(lambda c: c.str.contains(search_raw, case=False, na=False)).any(axis=1)
+            prev_raw = prev_raw[mask]
+            st.caption(f"Found {len(prev_raw)} matching rows")
+        prev_raw.index = range(1, len(prev_raw)+1)
+        st.dataframe(prev_raw, use_container_width=True)
 
         st.divider()
 
@@ -783,7 +895,17 @@ Message:
 
         # Cleaned data preview
         st.subheader("Cleaned Data")
-        st.dataframe(clean_df.head(rows_to_show), use_container_width=True)
+        c1, c2 = st.columns([2,2])
+        search_clean = c2.text_input("🔍 Search", placeholder="Filter rows...", key="search_clean")
+        prev_clean = clean_df.head(rows_to_show).copy()
+        if search_clean:
+            mask = prev_clean.astype(str).apply(lambda c: c.str.contains(search_clean, case=False, na=False)).any(axis=1)
+            prev_clean = prev_clean[mask]
+            st.caption(f"Found {len(prev_clean)} matching rows")
+        prev_clean.index = range(1, len(prev_clean)+1)
+        for c in prev_clean.select_dtypes(include="float").columns:
+            prev_clean[c] = prev_clean[c].round(2)
+        st.dataframe(prev_clean, use_container_width=True)
 
         st.download_button(
             label="⬇️ Download Cleaned CSV",
@@ -2018,3 +2140,136 @@ Message:
                         mime=mime,
                         key=f"dl_{report_choice}_{export_fmt}",
                     )
+
+    # =====================================================
+    # TAB 8 — FORECASTING
+    # =====================================================
+
+    with tab8:
+        st.subheader("📅 Time Series Forecasting")
+        st.caption("Predict future values from your time-based data — sales, revenue, visits, scores, etc.")
+
+        try:
+            from timeseries_engine import detect_timeseries_cols, prepare_series, forecast, confidence_interval
+
+            date_col, value_cols = detect_timeseries_cols(filtered_df)
+
+            if not date_col:
+                st.warning("⚠️ No date/time column detected in your dataset. Forecasting requires a date column.")
+                st.info("💡 Make sure your dataset has a column with dates like '2024-01-15' or 'Jan 2024'.")
+            elif not value_cols:
+                st.warning("⚠️ No numeric columns found for forecasting.")
+            else:
+                st.success(f"✅ Date column detected: **{date_col}**")
+
+                fc1, fc2, fc3 = st.columns(3)
+                value_col  = fc1.selectbox("📊 Column to Forecast", value_cols, key="fc_col")
+                periods    = fc2.slider("📅 Days to Forecast", 7, 180, 30, key="fc_periods")
+                confidence = fc3.selectbox("🎯 Confidence Interval", ["95%", "90%", "None"], key="fc_ci")
+
+                if st.button("🚀 Run Forecast", type="primary", use_container_width=False):
+                    with st.spinner("Running forecast models..."):
+                        try:
+                            ts, freq      = prepare_series(filtered_df, date_col, value_col)
+                            result, error = forecast(ts, periods=periods, freq=freq)
+
+                            if error:
+                                st.error(f"❌ {error}")
+                            else:
+                                st.session_state["forecast_result"] = {
+                                    "ts":        ts,
+                                    "forecast":  result["forecast"],
+                                    "model":     result["name"],
+                                    "col":       value_col,
+                                    "periods":   periods,
+                                    "freq":      freq,
+                                }
+                        except Exception as e:
+                            st.error(f"Forecast failed: {e}")
+
+                if "forecast_result" in st.session_state:
+                    fr      = st.session_state["forecast_result"]
+                    ts      = fr["ts"]
+                    fc_pred = fr["forecast"]
+                    model   = fr["model"]
+                    col     = fr["col"]
+
+                    st.divider()
+                    st.success(f"🏆 Best model: **{model}**")
+
+                    # Metrics
+                    m1, m2, m3, m4 = st.columns(4)
+                    m1.metric("Historical Points", len(ts))
+                    m2.metric("Forecast Periods",  len(fc_pred))
+                    m3.metric("Last Known Value",   f"{ts.iloc[-1]:,.2f}")
+                    m4.metric("Forecast End Value", f"{fc_pred.iloc[-1]:,.2f}",
+                              delta=f"{fc_pred.iloc[-1] - ts.iloc[-1]:+,.2f}")
+
+                    # Plot
+                    fig_fc = go.Figure()
+
+                    # Historical
+                    fig_fc.add_trace(go.Scatter(
+                        x=ts.index, y=ts.values,
+                        name="Historical",
+                        line=dict(color="#636EFA", width=2),
+                        mode="lines",
+                    ))
+
+                    # Forecast
+                    fig_fc.add_trace(go.Scatter(
+                        x=fc_pred.index, y=fc_pred.values,
+                        name="Forecast",
+                        line=dict(color="#EF553B", width=2, dash="dash"),
+                        mode="lines",
+                    ))
+
+                    # Confidence interval
+                    if confidence != "None":
+                        ci_pct = 0.95 if confidence == "95%" else 0.90
+                        upper, lower = confidence_interval(ts, fc_pred, ci_pct)
+                        fig_fc.add_trace(go.Scatter(
+                            x=list(fc_pred.index) + list(fc_pred.index[::-1]),
+                            y=list(upper.values) + list(lower.values[::-1]),
+                            fill="toself",
+                            fillcolor="rgba(239,85,59,0.15)",
+                            line=dict(color="rgba(255,255,255,0)"),
+                            name=f"{confidence} Confidence",
+                        ))
+
+                    fig_fc.update_layout(
+                        title=f"{col} — Forecast for next {periods} periods",
+                        template="plotly_white",
+                        height=480,
+                        hovermode="x unified",
+                        xaxis_title="Date",
+                        yaxis_title=col,
+                    )
+                    st.plotly_chart(fig_fc, use_container_width=True)
+
+                    # Forecast table
+                    with st.expander("📋 Forecast Values", expanded=False):
+                        fc_df = fc_pred.reset_index()
+                        fc_df.columns = ["Date", f"Predicted {col}"]
+                        fc_df[f"Predicted {col}"] = fc_df[f"Predicted {col}"].round(2)
+                        st.dataframe(fc_df, use_container_width=True, hide_index=True)
+
+                    # Save to dashboard
+                    if st.button("📤 Send to Auto Dashboard", key="fc_to_dash"):
+                        if "dashboard_charts" not in st.session_state:
+                            st.session_state["dashboard_charts"] = []
+                        fc_chart_entry = {
+                            "id":         int(pd.Timestamp.now().timestamp() * 1000),
+                            "title":      f"📅 Forecast: {col}",
+                            "fig_json":   fig_fc.to_json(),
+                            "chart_type": "line",
+                            "pinned":     True,
+                            "source":     "forecast",
+                        }
+                        st.session_state["dashboard_charts"].append(fc_chart_entry)
+                        st.success("✅ Sent to Auto Dashboard!")
+
+        except ImportError:
+            st.error("Forecasting engine not found. Make sure timeseries_engine.py is in your project.")
+        except Exception as e:
+            st.error(f"Forecasting error: {e}")
