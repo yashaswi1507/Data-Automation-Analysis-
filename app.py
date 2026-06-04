@@ -665,6 +665,8 @@ if raw_df is not None:
     # =====================================================
 
     st.sidebar.divider()
+    st.sidebar.divider()
+    st.sidebar.markdown("<div style='text-align:center;color:#bdc3c7;font-size:0.8rem;'>Made with ❤️ | <b>DataPilot</b></div>", unsafe_allow_html=True)
     st.sidebar.subheader("💬 Feedback")
 
     with st.sidebar.form("feedback_form", clear_on_submit=True):
@@ -1980,7 +1982,7 @@ Message:
                             st.success(f"✅ Report **'{rname}'** saved with {len(pinned_charts)} chart(s)!")
 
         else:
-            st.info("Click **Generate Auto Charts** to build your dashboard.")
+            st.markdown("<div style='text-align:center;padding:40px;color:#7f8c8d;'><h3>📊 Dashboard is empty</h3><p>Click <b>Generate Auto Charts</b> to auto-build, or save charts from Visualization Studio, ML, or Query tabs.</p></div>", unsafe_allow_html=True)
 
         st.divider()
 
