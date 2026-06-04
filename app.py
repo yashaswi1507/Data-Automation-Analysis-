@@ -235,10 +235,47 @@ def _filter_useful_charts(charts, df):
 # PAGE CONFIG
 # =========================================================
 
-st.set_page_config(page_title="Data Analysis Automation Tool", layout="wide")
+st.set_page_config(
+    page_title="DataPilot — Smart Data Analysis",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
-st.title("Data Analysis Automation Tool")
-st.markdown("Upload data, clean it, visualize it, query it, and predict insights using AI-powered analytics.")
+st.markdown("""
+<style>
+    .stTabs [data-baseweb="tab"] {
+        padding: 8px 16px;
+        border-radius: 6px 6px 0 0;
+        font-weight: 500;
+    }
+    [data-testid="stMetric"] {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 12px;
+        border: 1px solid #e9ecef;
+    }
+    .stButton > button[kind="primary"] {
+        border-radius: 8px;
+        font-weight: 600;
+    }
+    [data-testid="stSidebar"] {
+        background: #f8f9fa;
+    }
+    .stAlert { border-radius: 8px; }
+    div[data-testid="stDataFrame"] { border-radius: 8px; }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("""
+<div style='text-align:center; padding: 10px 0 5px 0;'>
+    <h1 style='font-size:2.8rem; font-weight:800; color:#2c3e50; margin:0;'>📊 DataPilot</h1>
+    <p style='font-size:1.1rem; color:#7f8c8d; margin:4px 0 0 0;'>
+        Upload → Clean → Visualize → Predict → Export &nbsp;|&nbsp; <b>No coding needed</b>
+    </p>
+</div>
+<hr style='border:none; border-top:2px solid #3498db; margin:10px 0 20px 0;'>
+""", unsafe_allow_html=True)
 
 # =========================================================
 # FILE UPLOAD
