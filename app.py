@@ -244,26 +244,48 @@ st.set_page_config(
 
 st.markdown("""
 <style>
+    /* Tabs */
     .stTabs [data-baseweb="tab"] {
         padding: 8px 16px;
         border-radius: 6px 6px 0 0;
         font-weight: 500;
     }
+    /* Metric cards — force visible text in both light/dark */
     [data-testid="stMetric"] {
-        background: #f8f9fa;
-        border-radius: 10px;
-        padding: 12px;
-        border: 1px solid #e9ecef;
+        background: white !important;
+        border-radius: 10px !important;
+        padding: 15px !important;
+        border: 1px solid #e9ecef !important;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.06) !important;
     }
+    [data-testid="stMetric"] label {
+        color: #6c757d !important;
+        font-size: 0.82rem !important;
+        font-weight: 500 !important;
+    }
+    [data-testid="stMetricValue"] {
+        color: #2c3e50 !important;
+        font-size: 1.5rem !important;
+        font-weight: 700 !important;
+    }
+    [data-testid="stMetricDelta"] {
+        font-size: 0.8rem !important;
+    }
+    /* Primary buttons */
     .stButton > button[kind="primary"] {
         border-radius: 8px;
         font-weight: 600;
+        background: #3498db !important;
+        border: none !important;
+        color: white !important;
     }
-    [data-testid="stSidebar"] {
-        background: #f8f9fa;
+    .stButton > button[kind="primary"]:hover {
+        background: #2980b9 !important;
     }
+    /* Alerts */
     .stAlert { border-radius: 8px; }
-    div[data-testid="stDataFrame"] { border-radius: 8px; }
+    /* Expander headers */
+    .streamlit-expanderHeader { font-weight: 600; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -433,17 +455,9 @@ if file is not None:
                 st.toast(f"✅ {file.name} loaded! Click Proceed to analyse.", icon="📂")
                 st.rerun()
 
-    # Show Proceed button after file is loaded
+    raw_df = st.session_state.get("raw_df")
     if st.session_state.get("loaded_file_name") == file.name:
-        st.success(f"✅ **{file.name}** ready — click Proceed to analyse")
-        if st.button("🚀 Proceed with this file", type="primary", use_container_width=True):
-            st.session_state["data_proceed"] = True
-        if not st.session_state.get("data_proceed"):
-            raw_df = None
-        else:
-            raw_df = st.session_state.get("raw_df")
-    else:
-        raw_df = st.session_state.get("raw_df")
+        st.success(f"✅ **{file.name}** ready to analyse")
 
 elif dataset_url:
     if st.button("🔍 Load Data from URL", type="primary"):
@@ -453,10 +467,12 @@ elif dataset_url:
             st.session_state["raw_df"]           = loaded
             st.session_state["loaded_file_name"] = dataset_url[:50]
             st.session_state["data_loaded"]      = True
+            st.session_state["data_proceed"]     = False
             st.toast("✅ Data loaded from URL!", icon="🔗")
+            st.rerun()
         else:
             st.error("❌ Could not load data. Check the URL format.")
-            st.info("💡 Expected formats: direct .csv/.xlsx URL, Kaggle dataset URL, or JSON API")
+            st.info("💡 Supported: direct .csv/.xlsx URL, Kaggle dataset URL, JSON API")
     raw_df = st.session_state.get("raw_df")
 
 else:
@@ -466,12 +482,20 @@ else:
 # MAIN APP
 # =========================================================
 
+# ── Single Proceed Button — shown whenever data is ready ────
+if raw_df is not None and not st.session_state.get("data_proceed", False):
+    fname = st.session_state.get("loaded_file_name","")
+    st.info(f"📂 **{fname}** loaded — {raw_df.shape[0]:,} rows × {raw_df.shape[1]} columns")
+    if st.button("🚀 Proceed — Analyse This Dataset", type="primary", use_container_width=True):
+        st.session_state["data_proceed"] = True
+        st.rerun()
+    st.stop()
+
 if raw_df is not None:
 
-    # Show what was loaded
     fname = st.session_state.get("loaded_file_name", "")
     if fname:
-        st.success(f"📂 **{fname}** — {raw_df.shape[0]:,} rows × {raw_df.shape[1]} columns loaded")
+        st.success(f"📂 **{fname}** — {raw_df.shape[0]:,} rows × {raw_df.shape[1]} columns")
 
     # ── Edge case: empty dataset ──────────────────────────────
     if raw_df.empty:
