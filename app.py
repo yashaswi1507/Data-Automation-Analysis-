@@ -829,10 +829,10 @@ Message:
 **Recommended flow:** Dashboard → Summary → Visualization → Auto Dashboard → My Reports
         """)
 
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
         "📊 Dashboard", "📋 Summary", "📈 Visualization Studio",
-        "🔍 Query Engine", "🤖 ML Prediction", "⚡ Auto Dashboard",
-        "📁 My Reports", "📅 Forecasting", "🔬 Advanced"
+        "🔍 Query Engine", "🤖 ML Prediction", "🔬 Advanced",
+        "⚡ Auto Dashboard", "📁 My Reports"
     ])
 
     # =====================================================
@@ -991,28 +991,60 @@ Message:
 
         fill_rows = []
         for r in report:
-            if "missing)" in r and "↳" not in r and "Dropped" not in r:
-                # Parse lines like: ✔ 'age' (10 missing) → filled with mode = 28.0
+            # Match lines like: ✔ 'age' (10 missing) → filled with mode = 28.0
+            if ("missing)" in r or "missing values" in r.lower()) and "↳" not in r and "Dropped" not in r:
                 try:
-                    col_part  = r.split("'")[1] if "'" in r else ""
-                    miss_part = r.split("(")[1].split(" missing")[0] if "(" in r else ""
-                    fill_part = r.split("→ filled with ")[-1] if "→ filled with " in r else ""
-                    if col_part and fill_part:
-                        fill_rows.append({
-                            "Column":         col_part,
-                            "Missing Count":  miss_part,
-                            "Filled With":    fill_part.strip(),
-                        })
+                    # Extract column name
+                    if "'" in r:
+                        col_part = r.split("'")[1]
+                    else:
+                        continue
+                    # Extract missing count
+                    if "(" in r and "missing" in r:
+                        miss_part = r.split("(")[1].split(" missing")[0].strip()
+                    else:
+                        miss_part = "?"
+                    # Extract fill value
+                    if "→ filled with" in r:
+                        fill_part = r.split("→ filled with")[-1].strip()
+                    elif "filled with" in r:
+                        fill_part = r.split("filled with")[-1].strip()
+                    else:
+                        continue
+                    fill_rows.append({
+                        "Column":        col_part,
+                        "Missing Count": miss_part,
+                        "Filled With":   fill_part,
+                    })
                 except Exception:
                     pass
 
+        # Also check directly from raw vs clean df
+        if not fill_rows:
+            for col in raw_df.columns:
+                if col not in clean_df.columns:
+                    continue
+                raw_miss   = int(raw_df[col].isnull().sum())
+                clean_miss = int(clean_df[col].isnull().sum())
+                if raw_miss > 0 and clean_miss < raw_miss:
+                    filled = raw_miss - clean_miss
+                    fill_val = clean_df[col].mode()[0] if len(clean_df[col].mode()) > 0 else "?"
+                    fill_rows.append({
+                        "Column":        col,
+                        "Missing Count": str(filled),
+                        "Filled With":   str(fill_val),
+                    })
+
         if fill_rows:
-            import pandas as pd
             fill_df = pd.DataFrame(fill_rows)
             st.dataframe(fill_df, use_container_width=True, hide_index=True)
             st.caption("This table shows what value was used to fill each column's missing data.")
         else:
-            st.info("✅ No missing values were filled — dataset was already clean!")
+            total_raw_missing = int(raw_df.isnull().sum().sum())
+            if total_raw_missing == 0:
+                st.success("✅ Dataset had no missing values — nothing to fill!")
+            else:
+                st.success("✅ All missing values were handled during cleaning.")
 
     # =====================================================
     # TAB 3 — VISUALIZATION STUDIO
@@ -1880,7 +1912,7 @@ Message:
     # TAB 6 — AUTO DASHBOARD
     # =====================================================
 
-    with tab6:
+    with tab7:
         st.subheader("⚡ Hybrid Auto Dashboard")
 
         # ── Session state init ────────────────────────────────────
@@ -2081,7 +2113,7 @@ Message:
     # TAB 7 — MY REPORTS  (Power BI style)
     # =====================================================
 
-    with tab7:
+    with tab8:
         saved = st.session_state.get("saved_reports", {})
         st.subheader("📁 My Reports")
 
@@ -2206,146 +2238,14 @@ Message:
                     )
 
     # =====================================================
-    # TAB 8 — FORECASTING
+    # TAB 6 — ADVANCED FEATURES
     # =====================================================
 
-    with tab8:
-        st.subheader("📅 Time Series Forecasting")
-        st.caption("Predict future values from your time-based data — sales, revenue, visits, scores, etc.")
-
-        try:
-            from timeseries_engine import detect_timeseries_cols, prepare_series, forecast, confidence_interval
-
-            date_col, value_cols = detect_timeseries_cols(filtered_df)
-
-            if not date_col:
-                st.warning("⚠️ No date/time column detected in your dataset. Forecasting requires a date column.")
-                st.info("💡 Make sure your dataset has a column with dates like '2024-01-15' or 'Jan 2024'.")
-            elif not value_cols:
-                st.warning("⚠️ No numeric columns found for forecasting.")
-            else:
-                st.success(f"✅ Date column detected: **{date_col}**")
-
-                fc1, fc2, fc3 = st.columns(3)
-                value_col  = fc1.selectbox("📊 Column to Forecast", value_cols, key="fc_col")
-                periods    = fc2.slider("📅 Days to Forecast", 7, 180, 30, key="fc_periods")
-                confidence = fc3.selectbox("🎯 Confidence Interval", ["95%", "90%", "None"], key="fc_ci")
-
-                if st.button("🚀 Run Forecast", type="primary", use_container_width=False):
-                    with st.spinner("Running forecast models..."):
-                        try:
-                            ts, freq      = prepare_series(filtered_df, date_col, value_col)
-                            result, error = forecast(ts, periods=periods, freq=freq)
-
-                            if error:
-                                st.error(f"❌ {error}")
-                            else:
-                                st.session_state["forecast_result"] = {
-                                    "ts":        ts,
-                                    "forecast":  result["forecast"],
-                                    "model":     result["name"],
-                                    "col":       value_col,
-                                    "periods":   periods,
-                                    "freq":      freq,
-                                }
-                        except Exception as e:
-                            st.error(f"Forecast failed: {e}")
-
-                if "forecast_result" in st.session_state:
-                    fr      = st.session_state["forecast_result"]
-                    ts      = fr["ts"]
-                    fc_pred = fr["forecast"]
-                    model   = fr["model"]
-                    col     = fr["col"]
-
-                    st.divider()
-                    st.success(f"🏆 Best model: **{model}**")
-
-                    # Metrics
-                    m1, m2, m3, m4 = st.columns(4)
-                    m1.metric("Historical Points", len(ts))
-                    m2.metric("Forecast Periods",  len(fc_pred))
-                    m3.metric("Last Known Value",   f"{ts.iloc[-1]:,.2f}")
-                    m4.metric("Forecast End Value", f"{fc_pred.iloc[-1]:,.2f}",
-                              delta=f"{fc_pred.iloc[-1] - ts.iloc[-1]:+,.2f}")
-
-                    # Plot
-                    fig_fc = go.Figure()
-
-                    # Historical
-                    fig_fc.add_trace(go.Scatter(
-                        x=ts.index, y=ts.values,
-                        name="Historical",
-                        line=dict(color="#636EFA", width=2),
-                        mode="lines",
-                    ))
-
-                    # Forecast
-                    fig_fc.add_trace(go.Scatter(
-                        x=fc_pred.index, y=fc_pred.values,
-                        name="Forecast",
-                        line=dict(color="#EF553B", width=2, dash="dash"),
-                        mode="lines",
-                    ))
-
-                    # Confidence interval
-                    if confidence != "None":
-                        ci_pct = 0.95 if confidence == "95%" else 0.90
-                        upper, lower = confidence_interval(ts, fc_pred, ci_pct)
-                        fig_fc.add_trace(go.Scatter(
-                            x=list(fc_pred.index) + list(fc_pred.index[::-1]),
-                            y=list(upper.values) + list(lower.values[::-1]),
-                            fill="toself",
-                            fillcolor="rgba(239,85,59,0.15)",
-                            line=dict(color="rgba(255,255,255,0)"),
-                            name=f"{confidence} Confidence",
-                        ))
-
-                    fig_fc.update_layout(
-                        title=f"{col} — Forecast for next {periods} periods",
-                        template="plotly_white",
-                        height=480,
-                        hovermode="x unified",
-                        xaxis_title="Date",
-                        yaxis_title=col,
-                    )
-                    st.plotly_chart(fig_fc, use_container_width=True)
-
-                    # Forecast table
-                    with st.expander("📋 Forecast Values", expanded=False):
-                        fc_df = fc_pred.reset_index()
-                        fc_df.columns = ["Date", f"Predicted {col}"]
-                        fc_df[f"Predicted {col}"] = fc_df[f"Predicted {col}"].round(2)
-                        st.dataframe(fc_df, use_container_width=True, hide_index=True)
-
-                    # Save to dashboard
-                    if st.button("📤 Send to Auto Dashboard", key="fc_to_dash"):
-                        if "dashboard_charts" not in st.session_state:
-                            st.session_state["dashboard_charts"] = []
-                        fc_chart_entry = {
-                            "id":         int(pd.Timestamp.now().timestamp() * 1000),
-                            "title":      f"📅 Forecast: {col}",
-                            "fig_json":   fig_fc.to_json(),
-                            "chart_type": "line",
-                            "pinned":     True,
-                            "source":     "forecast",
-                        }
-                        st.session_state["dashboard_charts"].append(fc_chart_entry)
-                        st.success("✅ Sent to Auto Dashboard!")
-
-        except ImportError:
-            st.error("Forecasting engine not found. Make sure timeseries_engine.py is in your project.")
-        except Exception as e:
-            st.error(f"Forecasting error: {e}")
-
-    # =====================================================
-    # TAB 9 — ADVANCED FEATURES
-    # =====================================================
-
-    with tab9:
+    with tab6:
         st.subheader("🔬 Advanced Analysis")
 
-        adv1, adv2, adv3, adv4 = st.tabs([
+        adv1, adv2, adv3, adv4, adv5 = st.tabs([
+            "📅 Forecasting",
             "🚨 Anomaly Detection",
             "🎯 What-If Analysis",
             "🔗 Data Merge",
@@ -2353,9 +2253,111 @@ Message:
         ])
 
         # ─────────────────────────────────────────────────
-        # ANOMALY DETECTION
+        # FORECASTING
         # ─────────────────────────────────────────────────
         with adv1:
+            st.subheader("📅 Time Series Forecasting")
+            st.caption("Predict future values from your time-based data — sales, revenue, visits, scores, etc.")
+
+            try:
+                from timeseries_engine import detect_timeseries_cols, prepare_series, forecast, confidence_interval
+
+                date_col, value_cols = detect_timeseries_cols(filtered_df)
+
+                if not date_col:
+                    st.warning("⚠️ No date/time column detected.")
+                    st.info("💡 Your dataset needs a column with dates like '2024-01-15'.")
+                elif not value_cols:
+                    st.warning("⚠️ No numeric columns found for forecasting.")
+                else:
+                    st.success(f"✅ Date column detected: **{date_col}**")
+                    fc1, fc2, fc3 = st.columns(3)
+                    value_col  = fc1.selectbox("📊 Column to Forecast", value_cols, key="fc_col")
+                    periods    = fc2.slider("📅 Periods to Forecast", 7, 180, 30, key="fc_periods")
+                    confidence = fc3.selectbox("🎯 Confidence Interval", ["95%","90%","None"], key="fc_ci")
+
+                    if st.button("🚀 Run Forecast", type="primary"):
+                        with st.spinner("Running forecast models..."):
+                            try:
+                                ts, freq      = prepare_series(filtered_df, date_col, value_col)
+                                result, error = forecast(ts, periods=periods, freq=freq)
+                                if error:
+                                    st.error(f"❌ {error}")
+                                else:
+                                    st.session_state["forecast_result"] = {
+                                        "ts": ts, "forecast": result["forecast"],
+                                        "model": result["name"], "col": value_col,
+                                        "periods": periods, "freq": freq,
+                                    }
+                            except Exception as e:
+                                st.error(f"Forecast failed: {e}")
+
+                    if "forecast_result" in st.session_state:
+                        fr  = st.session_state["forecast_result"]
+                        ts  = fr["ts"]
+                        fcp = fr["forecast"]
+                        col = fr["col"]
+
+                        st.divider()
+                        st.success(f"🏆 Best model: **{fr['model']}**")
+
+                        m1,m2,m3,m4 = st.columns(4)
+                        m1.metric("Historical Points", len(ts))
+                        m2.metric("Forecast Periods",  len(fcp))
+                        m3.metric("Last Known",         f"{ts.iloc[-1]:,.2f}")
+                        m4.metric("Forecast End",       f"{fcp.iloc[-1]:,.2f}",
+                                  delta=f"{fcp.iloc[-1]-ts.iloc[-1]:+,.2f}")
+
+                        fig_fc = go.Figure()
+                        fig_fc.add_trace(go.Scatter(x=ts.index, y=ts.values,
+                            name="Historical", line=dict(color="#636EFA", width=2)))
+                        fig_fc.add_trace(go.Scatter(x=fcp.index, y=fcp.values,
+                            name="Forecast", line=dict(color="#EF553B", width=2, dash="dash")))
+
+                        if confidence != "None":
+                            ci_pct = 0.95 if confidence == "95%" else 0.90
+                            upper, lower = confidence_interval(ts, fcp, ci_pct)
+                            fig_fc.add_trace(go.Scatter(
+                                x=list(fcp.index)+list(fcp.index[::-1]),
+                                y=list(upper.values)+list(lower.values[::-1]),
+                                fill="toself", fillcolor="rgba(239,85,59,0.15)",
+                                line=dict(color="rgba(255,255,255,0)"),
+                                name=f"{confidence} Confidence",
+                            ))
+
+                        fig_fc.update_layout(
+                            title=f"{col} — {periods} period forecast",
+                            template="plotly_white", height=460,
+                            hovermode="x unified",
+                        )
+                        st.plotly_chart(fig_fc, use_container_width=True)
+
+                        with st.expander("📋 Forecast Values Table"):
+                            fc_df = fcp.reset_index()
+                            fc_df.columns = ["Date", f"Predicted {col}"]
+                            fc_df[f"Predicted {col}"] = fc_df[f"Predicted {col}"].round(2)
+                            st.dataframe(fc_df, use_container_width=True, hide_index=True)
+
+                        if st.button("📤 Send to Auto Dashboard", key="fc_to_dash"):
+                            if "dashboard_charts" not in st.session_state:
+                                st.session_state["dashboard_charts"] = []
+                            st.session_state["dashboard_charts"].append({
+                                "id": int(pd.Timestamp.now().timestamp()*1000),
+                                "title": f"📅 Forecast: {col}",
+                                "fig_json": fig_fc.to_json(),
+                                "chart_type": "line",
+                                "pinned": True,
+                                "source": "forecast",
+                            })
+                            st.success("✅ Sent to Auto Dashboard!")
+
+            except Exception as e:
+                st.error(f"Forecasting error: {e}")
+
+        # ─────────────────────────────────────────────────
+        # ANOMALY DETECTION
+        # ─────────────────────────────────────────────────
+        with adv2:
             st.subheader("🚨 Anomaly Detection")
             st.caption("Automatically find unusual spikes, drops, or outliers in your data.")
 
@@ -2419,7 +2421,7 @@ Message:
         # ─────────────────────────────────────────────────
         # WHAT-IF ANALYSIS
         # ─────────────────────────────────────────────────
-        with adv2:
+        with adv3:
             st.subheader("🎯 What-If Analysis")
             st.caption("Change values with sliders and see how it affects other columns in real time.")
 
@@ -2489,7 +2491,7 @@ Message:
         # ─────────────────────────────────────────────────
         # DATA MERGE
         # ─────────────────────────────────────────────────
-        with adv3:
+        with adv4:
             st.subheader("🔗 Merge Two Datasets")
             st.caption("Join two CSV files on a common column — like Excel VLOOKUP.")
 
@@ -2539,7 +2541,7 @@ Message:
         # ─────────────────────────────────────────────────
         # GOAL TRACKER
         # ─────────────────────────────────────────────────
-        with adv4:
+        with adv5:
             st.subheader("🏆 Goal Tracker")
             st.caption("Set a target for any numeric column and track progress.")
 

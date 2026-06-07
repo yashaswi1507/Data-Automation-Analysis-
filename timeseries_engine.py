@@ -22,15 +22,25 @@ def detect_timeseries_cols(df):
     date_col   = None
     value_cols = []
 
-    # Find date column
+    # Find date column — check actual datetime dtype first, then try parsing
     for col in df.columns:
-        try:
-            parsed = pd.to_datetime(df[col], errors="coerce", infer_datetime_format=True)
-            if parsed.notna().mean() >= 0.8:
-                date_col = col
-                break
-        except Exception:
-            pass
+        # Already datetime
+        if pd.api.types.is_datetime64_any_dtype(df[col]):
+            date_col = col
+            break
+    
+    if not date_col:
+        for col in df.columns:
+            try:
+                s = df[col].dropna().astype(str)
+                if len(s) == 0:
+                    continue
+                parsed = pd.to_datetime(s, errors="coerce", infer_datetime_format=True)
+                if parsed.notna().mean() >= 0.7:
+                    date_col = col
+                    break
+            except Exception:
+                pass
 
     # Find numeric value columns (exclude IDs)
     for col in df.select_dtypes(include="number").columns:
