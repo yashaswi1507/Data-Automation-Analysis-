@@ -303,21 +303,20 @@ st.markdown("""
 # FILE UPLOAD
 # =========================================================
 
-# Session state for stable file handling
-if "raw_df" not in st.session_state:
-    st.session_state["raw_df"]      = None
-if "loaded_file_name" not in st.session_state:
-    st.session_state["loaded_file_name"] = None
-if "data_loaded" not in st.session_state:
-    st.session_state["data_loaded"] = False
+# Session state
+if "raw_df"           not in st.session_state: st.session_state["raw_df"]           = None
+if "loaded_file_name" not in st.session_state: st.session_state["loaded_file_name"] = None
+if "data_loaded"      not in st.session_state: st.session_state["data_loaded"]      = False
+if "uploaded_datasets" not in st.session_state: st.session_state["uploaded_datasets"] = {}  # {name: df}
 
 col_upload, col_url = st.columns([1, 1])
 
 with col_upload:
-    file = st.file_uploader(
-        "📂 Upload Dataset",
+    files = st.file_uploader(
+        "📂 Upload Dataset(s)",
         type=["csv","xlsx","xls","json","zip"],
-        help="Supported formats: CSV, Excel (.xlsx/.xls), JSON, ZIP",
+        accept_multiple_files=True,
+        help="Upload one or multiple files. Tool will suggest merge options automatically.",
     )
 
 with col_url:
@@ -332,6 +331,9 @@ with col_url:
             dataset_url = ""
         else:
             st.success("✅ URL valid — click Load Data to proceed")
+
+# Handle single file for backward compat
+file = files[0] if files and len(files) == 1 else (files[0] if files else None)
 
 raw_df = None
 
@@ -397,17 +399,64 @@ def universal_data_loader(source):
     except: pass
 
     try:
-        resp = requests.get(source, headers={"User-Agent":"Mozilla/5.0"}, timeout=15)
+        headers  = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        resp     = requests.get(source, headers=headers, timeout=15)
+
+        # 1. HTML tables first (Wikipedia, data pages)
+        try:
+            tables = pd.read_html(resp.text)
+            if tables:
+                best = max(tables, key=lambda t: t.shape[0] * t.shape[1])
+                if best.shape[0] >= 2 and best.shape[1] >= 2:
+                    best.columns = best.columns.astype(str)
+                    return best
+        except Exception:
+            pass
+
+        # 2. BeautifulSoup structured extraction
         soup = BeautifulSoup(resp.text, "html.parser")
-        data = [{"Text": p.get_text().strip()} for p in soup.find_all("p")[:100] if p.get_text().strip()]
-        if data: return pd.DataFrame(data)
-    except: pass
+        for tag in soup(["script","style","nav","footer","header"]):
+            tag.decompose()
+
+        # 3. Try lists (ul/ol)
+        list_data = []
+        for ul in soup.find_all(["ul","ol"])[:10]:
+            items = [li.get_text().strip() for li in ul.find_all("li") if len(li.get_text().strip()) > 5]
+            if len(items) >= 3:
+                list_data.extend([{"Item": item} for item in items])
+        if len(list_data) >= 5:
+            return pd.DataFrame(list_data)
+
+        # 4. Headings + paragraphs structured
+        sections = []
+        for tag in soup.find_all(["h1","h2","h3","h4","p"]):
+            text = tag.get_text().strip()
+            if len(text) > 20:
+                sections.append({"Type": tag.name.upper(), "Content": text[:500]})
+        if len(sections) >= 3:
+            return pd.DataFrame(sections)
+
+        # 5. Fallback — paragraphs only
+        paras = [p.get_text().strip() for p in soup.find_all("p") if len(p.get_text().strip()) > 30]
+        if paras:
+            return pd.DataFrame({"Text": paras[:200]})
+
+    except Exception:
+        pass
 
     return None
 
 # =========================================================
 # FILE INPUT
 # =========================================================
+
+# ── Reset if file removed ────────────────────────────────────
+if file is None and files == [] and not dataset_url:
+    if st.session_state.get("data_loaded"):
+        for key in list(st.session_state.keys()):
+            if key not in ["feedback_log"]:
+                del st.session_state[key]
+        st.rerun()
 
 if file is not None:
     # Only reload if new file uploaded (prevent reset on same file)
@@ -481,6 +530,165 @@ else:
 # =========================================================
 # MAIN APP
 # =========================================================
+
+# =========================================================
+# MULTI-DATASET HANDLER
+# =========================================================
+
+def _load_single_file(f):
+    """Load a single uploaded file into DataFrame."""
+    fname = f.name.lower()
+    try:
+        if fname.endswith(".csv"):
+            return load_csv_safely(f)
+        elif fname.endswith(".xlsx"):
+            xl = pd.ExcelFile(f, engine="openpyxl")
+            return xl.parse(xl.sheet_names[0])
+        elif fname.endswith(".xls"):
+            return pd.read_excel(f, engine="xlrd")
+        elif fname.endswith(".json"):
+            return pd.read_json(f)
+        elif fname.endswith(".zip"):
+            import zipfile
+            zf = zipfile.ZipFile(f)
+            for n in zf.namelist():
+                if n.endswith(".csv"):
+                    with zf.open(n) as z: return pd.read_csv(z)
+    except Exception:
+        return None
+
+def _compare_schemas(df1, df2):
+    """
+    Compare two dataframes schemas.
+    Returns: 'identical', 'compatible', 'partial', 'different'
+    """
+    cols1 = set(df1.columns.str.lower().str.strip())
+    cols2 = set(df2.columns.str.lower().str.strip())
+    common = cols1 & cols2
+    if cols1 == cols2:
+        return "identical", common
+    elif len(common) / max(len(cols1), len(cols2)) >= 0.7:
+        return "compatible", common
+    elif len(common) > 0:
+        return "partial", common
+    else:
+        return "different", common
+
+if files and len(files) > 1:
+    # Load all files
+    loaded_dfs = {}
+    for f in files:
+        df_loaded = _load_single_file(f)
+        if df_loaded is not None:
+            loaded_dfs[f.name] = df_loaded
+        else:
+            st.warning(f"⚠️ Could not load **{f.name}** — skipping.")
+
+    if len(loaded_dfs) >= 2:
+        st.divider()
+        st.subheader("📂 Multiple Datasets Detected")
+
+        # Show loaded files summary
+        sum_cols = st.columns(len(loaded_dfs))
+        for i, (fname, df) in enumerate(loaded_dfs.items()):
+            sum_cols[i].metric(fname, f"{df.shape[0]:,} rows × {df.shape[1]} cols")
+
+        # Compare all pairs
+        names  = list(loaded_dfs.keys())
+        df_a   = loaded_dfs[names[0]]
+        df_b   = loaded_dfs[names[1]]
+        schema, common_cols = _compare_schemas(df_a, df_b)
+
+        st.divider()
+
+        if schema == "identical":
+            # Same columns → offer stack merge
+            st.success(f"✅ All datasets have **identical columns** — they can be stacked together.")
+            st.markdown(f"**{len(df_a.columns)} columns match** — rows will be combined.")
+
+            if st.button("🔗 Merge All (Stack Rows)", type="primary", use_container_width=False):
+                merged = pd.concat(list(loaded_dfs.values()), ignore_index=True)
+                st.session_state["raw_df"]           = merged
+                st.session_state["loaded_file_name"] = f"Merged ({len(loaded_dfs)} files)"
+                st.session_state["data_loaded"]      = True
+                st.session_state["data_proceed"]     = False
+                st.success(f"✅ Merged! Total: {len(merged):,} rows × {merged.shape[1]} cols")
+                st.rerun()
+
+        elif schema in ("compatible", "partial"):
+            # Partial match → offer join or stack
+            st.info(f"📊 **{len(common_cols)} common column(s)** found: `{'`, `'.join(list(common_cols)[:5])}`")
+
+            tab_stack, tab_join = st.tabs(["📥 Stack (add rows)", "🔗 Join (add columns)"])
+
+            with tab_stack:
+                st.markdown("**Stack** — combine rows from all files. Missing columns will be filled with empty.")
+                col_extra = set(df_a.columns) ^ set(df_b.columns)
+                if col_extra:
+                    st.warning(f"⚠️ These columns exist in only one file and will have empty values: `{'`, `'.join(list(col_extra)[:5])}`")
+                if st.button("📥 Stack Datasets", type="primary", key="btn_stack"):
+                    merged = pd.concat(list(loaded_dfs.values()), ignore_index=True)
+                    st.session_state["raw_df"]           = merged
+                    st.session_state["loaded_file_name"] = f"Stacked ({len(loaded_dfs)} files)"
+                    st.session_state["data_loaded"]      = True
+                    st.session_state["data_proceed"]     = False
+                    st.success(f"✅ Stacked! {len(merged):,} rows × {merged.shape[1]} cols")
+                    st.rerun()
+
+            with tab_join:
+                st.markdown("**Join** — match rows on a common column and combine columns side by side.")
+                join_col = st.selectbox("Join on column", sorted(list(common_cols)), key="multi_join_col")
+                join_how = st.radio("Join type", ["inner","left","outer"],
+                    format_func=lambda x: {"inner":"Inner (only matching rows)","left":"Left (keep all from first file)","outer":"Outer (keep all rows)"}[x],
+                    horizontal=True, key="multi_join_how")
+                if st.button("🔗 Join Datasets", type="primary", key="btn_join"):
+                    try:
+                        merged = df_a
+                        for name in names[1:]:
+                            merged = pd.merge(merged, loaded_dfs[name], on=join_col, how=join_how, suffixes=("","_2"))
+                        st.session_state["raw_df"]           = merged
+                        st.session_state["loaded_file_name"] = f"Joined ({len(loaded_dfs)} files)"
+                        st.session_state["data_loaded"]      = True
+                        st.session_state["data_proceed"]     = False
+                        st.success(f"✅ Joined! {len(merged):,} rows × {merged.shape[1]} cols")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Join failed: {e}")
+
+        else:
+            # Completely different → keep separate or select one
+            st.warning("⚠️ Datasets have **different columns** — they cannot be merged directly.")
+            st.markdown("**Options:**")
+
+            sel_col1, sel_col2 = st.columns(2)
+            with sel_col1:
+                st.markdown("**Use one dataset:**")
+                for name, df in loaded_dfs.items():
+                    if st.button(f"📂 Use {name}", key=f"use_{name}", use_container_width=True):
+                        st.session_state["raw_df"]           = df
+                        st.session_state["loaded_file_name"] = name
+                        st.session_state["data_loaded"]      = True
+                        st.session_state["data_proceed"]     = False
+                        st.rerun()
+
+            with sel_col2:
+                st.markdown("**Force stack (fill missing with empty):**")
+                if st.button("📥 Force Stack Anyway", key="force_stack", use_container_width=True):
+                    merged = pd.concat(list(loaded_dfs.values()), ignore_index=True)
+                    st.session_state["raw_df"]           = merged
+                    st.session_state["loaded_file_name"] = f"Force Stacked ({len(loaded_dfs)} files)"
+                    st.session_state["data_loaded"]      = True
+                    st.session_state["data_proceed"]     = False
+                    st.rerun()
+
+        st.stop()
+
+    elif len(loaded_dfs) == 1:
+        # Only one loaded successfully
+        name = list(loaded_dfs.keys())[0]
+        st.session_state["raw_df"]           = loaded_dfs[name]
+        st.session_state["loaded_file_name"] = name
+        st.session_state["data_loaded"]      = True
 
 # ── Single Proceed Button — shown whenever data is ready ────
 if raw_df is not None and not st.session_state.get("data_proceed", False):
