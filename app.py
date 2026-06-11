@@ -2694,3 +2694,7 @@ Message:
                         st.warning("Not enough data rows for prediction.")
                 except Exception as e:
                     st.error(f"What-If calculation error: {e}")
+
+        # ─────────────────────────────────────────────────
+        # DATA MERGE
+        # ─────────────────────────────────────────────────
