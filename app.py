@@ -452,12 +452,11 @@ def universal_data_loader(source):
 # =========================================================
 
 # ── Reset if file removed ────────────────────────────────────
-if file is None and files == [] and not dataset_url:
-    if st.session_state.get("data_loaded"):
-        for key in list(st.session_state.keys()):
-            if key not in ["feedback_log"]:
-                del st.session_state[key]
-        st.rerun()
+if (not files) and (not dataset_url) and st.session_state.get("data_loaded"):
+    for key in list(st.session_state.keys()):
+        if key not in ["feedback_log"]:
+            del st.session_state[key]
+    st.rerun()
 
 if file is not None:
     # Only reload if new file uploaded (prevent reset on same file)
@@ -506,7 +505,7 @@ if file is not None:
                 st.rerun()
 
     raw_df = st.session_state.get("raw_df")
-    if st.session_state.get("loaded_file_name") == file.name:
+    if file and st.session_state.get("loaded_file_name") == file.name:
         st.success(f"✅ **{file.name}** ready to analyse")
 
 elif dataset_url:
@@ -538,20 +537,33 @@ else:
 
 def _load_single_file(f):
     """Load a single uploaded file into DataFrame."""
+    import io
     fname = f.name.lower()
     try:
+        f.seek(0)
+        buf = io.BytesIO(f.read())
         if fname.endswith(".csv"):
-            return load_csv_safely(f)
+            for enc in ["utf-8","latin1","ISO-8859-1"]:
+                for sep in [",",";","	"]:
+                    try:
+                        buf.seek(0)
+                        df = pd.read_csv(buf, encoding=enc, sep=sep, on_bad_lines="skip")
+                        if len(df.columns) > 1:
+                            return df
+                    except Exception:
+                        continue
+            buf.seek(0)
+            return pd.read_csv(buf)
         elif fname.endswith(".xlsx"):
-            xl = pd.ExcelFile(f, engine="openpyxl")
+            xl = pd.ExcelFile(buf, engine="openpyxl")
             return xl.parse(xl.sheet_names[0])
         elif fname.endswith(".xls"):
-            return pd.read_excel(f, engine="xlrd")
+            return pd.read_excel(buf, engine="xlrd")
         elif fname.endswith(".json"):
-            return pd.read_json(f)
+            return pd.read_json(buf)
         elif fname.endswith(".zip"):
             import zipfile
-            zf = zipfile.ZipFile(f)
+            zf = zipfile.ZipFile(buf)
             for n in zf.namelist():
                 if n.endswith(".csv"):
                     with zf.open(n) as z: return pd.read_csv(z)
