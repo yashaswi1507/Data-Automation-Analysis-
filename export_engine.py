@@ -84,11 +84,11 @@ def export_html(report_name, rpt_kpis, rpt_charts, insights):
             padding:10px 15px;margin:8px 0;border-radius:4px;font-size:14px;}}
   @media(max-width:700px){{.chart-grid{{grid-template-columns:1fr;}}}}
 </style></head><body>
-<h1>{report_name}</h1>
+<h1>📊 {report_name}</h1>
 <div class="kpi-row">{kpi_html}</div>
-<h2>Charts</h2>
+<h2>📈 Charts</h2>
 <div class="chart-grid">{charts_html}</div>
-<h2>Insights</h2>
+<h2>💡 Insights</h2>
 {insights_html}
 </body></html>"""
 
