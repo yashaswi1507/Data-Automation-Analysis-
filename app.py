@@ -704,7 +704,8 @@ if files and len(files) > 1:
         st.session_state["data_loaded"]      = True
 
 # ── Single Proceed Button — shown whenever data is ready ────
-if raw_df is not None and not st.session_state.get("data_proceed", False):
+# Only show for single file — multi file has its own flow
+if raw_df is not None and not st.session_state.get("data_proceed", False) and not (files and len(files) > 1):
     fname = st.session_state.get("loaded_file_name","")
     st.info(f"📂 **{fname}** loaded — {raw_df.shape[0]:,} rows × {raw_df.shape[1]} columns")
     if st.button("🚀 Proceed — Analyse This Dataset", type="primary", use_container_width=True):
@@ -2710,4 +2711,3 @@ Message:
         # ─────────────────────────────────────────────────
         # DATA MERGE
         # ─────────────────────────────────────────────────
-
