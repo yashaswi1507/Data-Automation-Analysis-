@@ -333,8 +333,8 @@ with col_url:
         else:
             st.success("✅ URL valid — click Load Data to proceed")
 
-# Handle single file for backward compat
-file = files[0] if files and len(files) == 1 else (files[0] if files else None)
+# Single file only — multi file handled separately below
+file = files[0] if files and len(files) == 1 else None
 
 raw_df = None
 
@@ -586,9 +586,6 @@ def _compare_schemas(df1, df2):
         return "partial", common
     else:
         return "different", common
-
-# Debug — remove after fix
-st.write(f"DEBUG: files={len(files) if files else 0}, data_loaded={st.session_state.get('data_loaded')}, data_proceed={st.session_state.get('data_proceed')}")
 
 if files and len(files) > 1:
     # Load all files
