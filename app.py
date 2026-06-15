@@ -303,12 +303,15 @@ st.markdown("""
 # FILE UPLOAD
 # =========================================================
 
-# Session state
-if "raw_df"           not in st.session_state: st.session_state["raw_df"]           = None
-if "loaded_file_name" not in st.session_state: st.session_state["loaded_file_name"] = None
-if "data_loaded"      not in st.session_state: st.session_state["data_loaded"]      = False
-if "uploaded_datasets" not in st.session_state: st.session_state["uploaded_datasets"] = {}  # {name: df}
+# ── Session state init ────────────────────────────────────────
+for _k, _v in {
+    "raw_df": None, "loaded_file_name": None,
+    "data_loaded": False, "data_proceed": False,
+}.items():
+    if _k not in st.session_state:
+        st.session_state[_k] = _v
 
+# ── File uploader UI ──────────────────────────────────────────
 col_upload, col_url = st.columns([1, 1])
 
 with col_upload:
@@ -316,370 +319,228 @@ with col_upload:
         "📂 Upload Dataset(s)",
         type=["csv","xlsx","xls","json","zip"],
         accept_multiple_files=True,
-        help="Upload one or multiple files. Tool will suggest merge options automatically.",
         key="main_file_uploader",
+        help="Upload one or multiple files.",
     )
 
 with col_url:
     dataset_url = st.text_input(
         "🔗 Or paste a URL",
         placeholder="e.g. https://raw.githubusercontent.com/.../data.csv",
-        help="Supported: Direct CSV/Excel URL | Kaggle dataset URL | JSON API | ZIP file URL",
+        key="dataset_url_input",
     )
     if dataset_url:
-        if not (dataset_url.startswith("http://") or dataset_url.startswith("https://")):
+        if not dataset_url.startswith("http"):
             st.warning("⚠️ URL must start with http:// or https://")
             dataset_url = ""
         else:
             st.success("✅ URL valid — click Load Data to proceed")
 
-# Single file only — multi file handled separately below
-file = files[0] if files and len(files) == 1 else None
+# ── Helper functions ──────────────────────────────────────────
 
-raw_df = None
-
-# =========================================================
-# SAFE CSV LOADER
-# =========================================================
-
-def load_csv_safely(file):
-    for enc in ["utf-8","latin1","ISO-8859-1","cp1252"]:
-        for sep in [",",";","\t"]:
-            try:
-                file.seek(0)
-                df = pd.read_csv(file, encoding=enc, sep=sep, on_bad_lines="skip")
-                if len(df.columns) > 1:
-                    return df
-            except:
-                continue
-    return None
-
-# =========================================================
-# UNIVERSAL DATA LOADER
-# =========================================================
-
-def universal_data_loader(source):
-
-    try:
-        if "kaggle.com/datasets/" in source:
-            parts        = source.split("/datasets/")[1]
-            dataset_path = parts.split("?")[0]
-            path         = kagglehub.dataset_download(dataset_path)
-            csv_files    = glob.glob(os.path.join(path, "*.csv"))
-            if csv_files:  return pd.read_csv(csv_files[0])
-            xlsx_files   = glob.glob(os.path.join(path, "*.xlsx"))
-            if xlsx_files: return pd.read_excel(xlsx_files[0])
-    except: pass
-
-    try:
-        if ".csv" in source:  return pd.read_csv(source)
-    except: pass
-
-    try:
-        if ".xlsx" in source: return pd.read_excel(source, engine="openpyxl")
-    except: pass
-
-    try:
-        response = requests.get(source)
-        return pd.DataFrame(response.json())
-    except: pass
-
-    try:
-        tables = pd.read_html(source)
-        if tables: return tables[0]
-    except: pass
-
-    try:
-        if ".zip" in source:
-            zip_file = zipfile.ZipFile(io.BytesIO(requests.get(source).content))
-            for name in zip_file.namelist():
-                if name.endswith(".csv"):
-                    with zip_file.open(name) as f: return pd.read_csv(f)
-                if name.endswith(".xlsx"):
-                    with zip_file.open(name) as f: return pd.read_excel(f, engine="openpyxl")
-    except: pass
-
-    try:
-        headers  = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-        resp     = requests.get(source, headers=headers, timeout=15)
-
-        # 1. HTML tables first (Wikipedia, data pages)
-        try:
-            tables = pd.read_html(resp.text)
-            if tables:
-                best = max(tables, key=lambda t: t.shape[0] * t.shape[1])
-                if best.shape[0] >= 2 and best.shape[1] >= 2:
-                    best.columns = best.columns.astype(str)
-                    return best
-        except Exception:
-            pass
-
-        # 2. BeautifulSoup structured extraction
-        soup = BeautifulSoup(resp.text, "html.parser")
-        for tag in soup(["script","style","nav","footer","header"]):
-            tag.decompose()
-
-        # 3. Try lists (ul/ol)
-        list_data = []
-        for ul in soup.find_all(["ul","ol"])[:10]:
-            items = [li.get_text().strip() for li in ul.find_all("li") if len(li.get_text().strip()) > 5]
-            if len(items) >= 3:
-                list_data.extend([{"Item": item} for item in items])
-        if len(list_data) >= 5:
-            return pd.DataFrame(list_data)
-
-        # 4. Headings + paragraphs structured
-        sections = []
-        for tag in soup.find_all(["h1","h2","h3","h4","p"]):
-            text = tag.get_text().strip()
-            if len(text) > 20:
-                sections.append({"Type": tag.name.upper(), "Content": text[:500]})
-        if len(sections) >= 3:
-            return pd.DataFrame(sections)
-
-        # 5. Fallback — paragraphs only
-        paras = [p.get_text().strip() for p in soup.find_all("p") if len(p.get_text().strip()) > 30]
-        if paras:
-            return pd.DataFrame({"Text": paras[:200]})
-
-    except Exception:
-        pass
-
-    return None
-
-# =========================================================
-# FILE INPUT
-# =========================================================
-
-def _do_load_file(f):
-    """Load single uploaded file — returns DataFrame or None."""
+def _load_file(f):
     import io
-    fname = f.name.lower()
     try:
         f.seek(0)
-        buf = io.BytesIO(f.read())
-        if fname.endswith(".csv"):
-            return load_csv_safely(buf)
-        elif fname.endswith(".xlsx"):
-            return pd.read_excel(buf, engine="openpyxl")
-        elif fname.endswith(".xls"):
-            return pd.read_excel(buf, engine="xlrd")
-        elif fname.endswith(".json"):
-            return pd.read_json(buf)
-        elif fname.endswith(".zip"):
-            import zipfile
-            zf = zipfile.ZipFile(buf)
-            for n in zf.namelist():
-                if n.endswith(".csv"):
-                    with zf.open(n) as z: return pd.read_csv(z)
-    except Exception:
-        return None
-
-def _save_to_session(df, name, proceed=False):
-    """Save loaded dataset to session state."""
-    st.session_state["raw_df"]           = df
-    st.session_state["loaded_file_name"] = name
-    st.session_state["data_loaded"]      = True
-    st.session_state["data_proceed"]     = proceed
-
-# ── Reset if no files and no data ────────────────────────────
-if not files and not dataset_url and not st.session_state.get("data_loaded"):
-    pass  # show upload screen
-
-elif not files and not dataset_url and st.session_state.get("data_loaded"):
-    # Reset only if raw_df is also gone (user actually removed file)
-    # If raw_df exists in session (after merge), keep it
-    if st.session_state.get("raw_df") is None:
-        for key in list(st.session_state.keys()):
-            if key not in ["feedback_log"]:
-                del st.session_state[key]
-        st.rerun()
-    # else: raw_df exists (merged data) — continue normally
-
-# ── Multi file upload ─────────────────────────────────────────
-elif files and len(files) > 1:
-    loaded_dfs = {}
-    for f in files:
-        df_loaded = _do_load_file(f)
-        if df_loaded is not None:
-            loaded_dfs[f.name] = df_loaded
-        else:
-            st.warning(f"⚠️ Could not load **{f.name}** — skipping.")
-
-    if len(loaded_dfs) >= 2:
-        st.divider()
-        st.subheader("📂 Multiple Datasets Detected")
-
-        sum_cols = st.columns(len(loaded_dfs))
-        for i, (fname, df) in enumerate(loaded_dfs.items()):
-            sum_cols[i].metric(fname, f"{df.shape[0]:,} rows × {df.shape[1]} cols")
-
-        names = list(loaded_dfs.keys())
-        df_a  = loaded_dfs[names[0]]
-        df_b  = loaded_dfs[names[1]]
-
-        cols1 = set(df_a.columns.str.lower().str.strip())
-        cols2 = set(df_b.columns.str.lower().str.strip())
-        common = cols1 & cols2
-
-        if cols1 == cols2:
-            schema = "identical"
-        elif len(common) / max(len(cols1), len(cols2)) >= 0.7:
-            schema = "compatible"
-        elif len(common) > 0:
-            schema = "partial"
-        else:
-            schema = "different"
-
-        st.divider()
-
-        if schema == "identical":
-            st.success(f"✅ All datasets have **identical columns** — they can be stacked together.")
-            st.markdown(f"**{len(df_a.columns)} columns match** — rows will be combined.")
-            if st.button("🔗 Merge All (Stack Rows)", type="primary"):
-                merged = pd.concat(list(loaded_dfs.values()), ignore_index=True)
-                _save_to_session(merged, f"Merged ({len(loaded_dfs)} files)", proceed=True)
-                st.toast(f"✅ Merged! {len(merged):,} rows × {merged.shape[1]} cols", icon="🔗")
-                st.rerun()
-
-        elif schema in ("compatible", "partial"):
-            st.info(f"📊 **{len(common)} common column(s)** found: `{'`, `'.join(list(common)[:5])}`")
-            tab_stack, tab_join = st.tabs(["📥 Stack (add rows)", "🔗 Join (add columns)"])
-
-            with tab_stack:
-                st.markdown("Combine rows from all files.")
-                if st.button("📥 Stack Datasets", type="primary", key="btn_stack"):
-                    merged = pd.concat(list(loaded_dfs.values()), ignore_index=True)
-                    _save_to_session(merged, f"Stacked ({len(loaded_dfs)} files)", proceed=True)
-                    st.toast(f"✅ Stacked! {len(merged):,} rows", icon="📥")
-                    st.rerun()
-
-            with tab_join:
-                st.markdown("Match rows on a common column.")
-                join_col = st.selectbox("Join on column", sorted(list(common)), key="multi_join_col")
-                join_how = st.radio("Join type", ["inner","left","outer"],
-                    format_func=lambda x: {"inner":"Inner","left":"Left","outer":"Outer"}[x],
-                    horizontal=True, key="multi_join_how")
-                if st.button("🔗 Join Datasets", type="primary", key="btn_join"):
-                    try:
-                        merged = df_a
-                        for n in names[1:]:
-                            merged = pd.merge(merged, loaded_dfs[n], on=join_col, how=join_how, suffixes=("","_2"))
-                        _save_to_session(merged, f"Joined ({len(loaded_dfs)} files)", proceed=True)
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Join failed: {e}")
-
-        else:
-            st.warning("⚠️ Datasets have **different columns** — cannot merge directly.")
-            c1, c2 = st.columns(2)
-            with c1:
-                st.markdown("**Use one dataset:**")
-                for name, df in loaded_dfs.items():
-                    if st.button(f"📂 Use {name}", key=f"use_{name}", use_container_width=True):
-                        _save_to_session(df, name, proceed=True)
-                        st.rerun()
-            with c2:
-                st.markdown("**Force stack anyway:**")
-                if st.button("📥 Force Stack", key="force_stack", use_container_width=True):
-                    merged = pd.concat(list(loaded_dfs.values()), ignore_index=True)
-                    _save_to_session(merged, f"Force Stacked", proceed=True)
-                    st.rerun()
-
-    elif len(loaded_dfs) == 1:
-        name = list(loaded_dfs.keys())[0]
-        _save_to_session(loaded_dfs[name], name, proceed=False)
-        st.rerun()
-
-    st.stop()
-
-# ── Single file upload ────────────────────────────────────────
-elif files and len(files) == 1:
-    f = files[0]
-    if f.name != st.session_state.get("loaded_file_name"):
-        with st.spinner(f"📂 Loading {f.name}..."):
-            loaded = _do_load_file(f)
-        if loaded is not None:
-            _save_to_session(loaded, f.name, proceed=False)
-            st.toast(f"✅ {f.name} loaded!", icon="📂")
-            st.rerun()
-        else:
-            st.error("❌ Could not read file.")
-
-# ── URL upload ────────────────────────────────────────────────
-elif dataset_url:
-    if st.button("🔍 Load Data from URL", type="primary"):
-        with st.spinner("Fetching data..."):
-            loaded = universal_data_loader(dataset_url)
-        if loaded is not None:
-            _save_to_session(loaded, dataset_url[:50], proceed=False)
-            st.toast("✅ Data loaded from URL!", icon="🔗")
-            st.rerun()
-        else:
-            st.error("❌ Could not load data. Check the URL format.")
-
-# ── Always restore raw_df from session ───────────────────────
-raw_df = st.session_state.get("raw_df")
-
-# =========================================================
-# MAIN APP
-# =========================================================
-
-def _load_single_file(f):
-    """Load a single uploaded file into DataFrame."""
-    import io
-    fname = f.name.lower()
-    try:
-        f.seek(0)
-        buf = io.BytesIO(f.read())
-        if fname.endswith(".csv"):
+        buf  = io.BytesIO(f.read())
+        name = f.name.lower()
+        if name.endswith(".csv"):
             for enc in ["utf-8","latin1","ISO-8859-1"]:
-                for sep in [",",";","	"]:
+                for sep in [",",";","\t"]:
                     try:
                         buf.seek(0)
                         df = pd.read_csv(buf, encoding=enc, sep=sep, on_bad_lines="skip")
-                        if len(df.columns) > 1:
-                            return df
-                    except Exception:
-                        continue
-            buf.seek(0)
-            return pd.read_csv(buf)
-        elif fname.endswith(".xlsx"):
-            xl = pd.ExcelFile(buf, engine="openpyxl")
-            return xl.parse(xl.sheet_names[0])
-        elif fname.endswith(".xls"):
+                        if len(df.columns) > 1: return df
+                    except: continue
+            buf.seek(0); return pd.read_csv(buf)
+        elif name.endswith(".xlsx"):
+            return pd.read_excel(buf, engine="openpyxl")
+        elif name.endswith(".xls"):
             return pd.read_excel(buf, engine="xlrd")
-        elif fname.endswith(".json"):
+        elif name.endswith(".json"):
             return pd.read_json(buf)
-        elif fname.endswith(".zip"):
+        elif name.endswith(".zip"):
             import zipfile
             zf = zipfile.ZipFile(buf)
             for n in zf.namelist():
                 if n.endswith(".csv"):
                     with zf.open(n) as z: return pd.read_csv(z)
-    except Exception:
-        return None
+    except: return None
 
-def _compare_schemas(df1, df2):
-    """
-    Compare two dataframes schemas.
-    Returns: 'identical', 'compatible', 'partial', 'different'
-    """
-    cols1 = set(df1.columns.str.lower().str.strip())
-    cols2 = set(df2.columns.str.lower().str.strip())
-    common = cols1 & cols2
-    if cols1 == cols2:
-        return "identical", common
-    elif len(common) / max(len(cols1), len(cols2)) >= 0.7:
-        return "compatible", common
-    elif len(common) > 0:
-        return "partial", common
+def _set(df, name, proceed=True):
+    st.session_state.update({
+        "raw_df": df, "loaded_file_name": name,
+        "data_loaded": True, "data_proceed": proceed,
+    })
+
+# ── Main upload logic ─────────────────────────────────────────
+
+raw_df = st.session_state.get("raw_df")
+
+if files and len(files) > 1:
+    # ── Multiple files ────────────────────────────────────────
+    dfs = {}
+    for f in files:
+        df = _load_file(f)
+        if df is not None: dfs[f.name] = df
+        else: st.warning(f"⚠️ Could not load {f.name}")
+
+    if len(dfs) < 2:
+        st.error("Could not load enough files.")
+        st.stop()
+
+    names = list(dfs.keys())
+    df_a, df_b = dfs[names[0]], dfs[names[1]]
+
+    # Show summary
+    st.divider()
+    st.subheader("📂 Multiple Datasets Detected")
+    cols = st.columns(len(dfs))
+    for i,(n,d) in enumerate(dfs.items()):
+        cols[i].metric(n, f"{d.shape[0]:,} rows × {d.shape[1]} cols")
+    st.divider()
+
+    # Compare schemas
+    c1 = set(df_a.columns.str.lower().str.strip())
+    c2 = set(df_b.columns.str.lower().str.strip())
+    common = c1 & c2
+    ratio  = len(common) / max(len(c1),len(c2)) if max(len(c1),len(c2)) > 0 else 0
+
+    if c1 == c2:
+        # Identical columns
+        st.success(f"✅ All datasets have identical columns — {len(df_a.columns)} columns match.")
+        if st.button("🔗 Merge All (Stack Rows)", type="primary", key="merge_identical"):
+            merged = pd.concat(list(dfs.values()), ignore_index=True)
+            _set(merged, f"Merged ({len(dfs)} files)")
+            st.rerun()
+
+    elif ratio >= 0.5:
+        # Partial match
+        st.info(f"📊 {len(common)} common column(s): `{'`, `'.join(list(common)[:5])}`")
+        t1, t2 = st.tabs(["📥 Stack (add rows)", "🔗 Join (add columns)"])
+
+        with t1:
+            if st.button("📥 Stack Datasets", type="primary", key="stack_partial"):
+                merged = pd.concat(list(dfs.values()), ignore_index=True)
+                _set(merged, f"Stacked ({len(dfs)} files)")
+                st.rerun()
+
+        with t2:
+            join_col = st.selectbox("Join on column", sorted(list(common)), key="join_col")
+            join_how = st.radio("Join type", ["inner","left","outer"], horizontal=True, key="join_how")
+            if st.button("🔗 Join", type="primary", key="join_partial"):
+                try:
+                    merged = df_a
+                    for n in names[1:]:
+                        merged = pd.merge(merged, dfs[n], on=join_col, how=join_how, suffixes=("","_2"))
+                    _set(merged, f"Joined ({len(dfs)} files)")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Join failed: {e}")
+
     else:
-        return "different", common
+        # Different columns
+        st.warning("⚠️ Datasets have different columns.")
+        c_l, c_r = st.columns(2)
+        with c_l:
+            st.markdown("**Use one file:**")
+            for n,d in dfs.items():
+                if st.button(f"📂 Use {n}", key=f"use_{n}", use_container_width=True):
+                    _set(d, n)
+                    st.rerun()
+        with c_r:
+            if st.button("📥 Force Stack", key="force_stack", use_container_width=True):
+                merged = pd.concat(list(dfs.values()), ignore_index=True)
+                _set(merged, f"Force Stacked")
+                st.rerun()
 
+    # If we reach here without rerun — data not merged yet, stop
+    if not st.session_state.get("data_proceed"):
+        st.stop()
 
-# Proceed button — only for single file/URL (not multi-file merge)
-if raw_df is not None and not st.session_state.get("data_proceed", False):
+    # After merge + rerun — restore raw_df
+    raw_df = st.session_state.get("raw_df")
+
+elif files and len(files) == 1:
+    # ── Single file ───────────────────────────────────────────
+    f = files[0]
+    if f.name != st.session_state.get("loaded_file_name"):
+        with st.spinner(f"Loading {f.name}..."):
+            df = _load_file(f)
+        if df is not None:
+            _set(df, f.name, proceed=False)
+            st.rerun()
+        else:
+            st.error("❌ Could not read file.")
+    raw_df = st.session_state.get("raw_df")
+
+elif dataset_url:
+    # ── URL ───────────────────────────────────────────────────
+    if st.button("🔍 Load from URL", type="primary"):
+        with st.spinner("Fetching..."):
+            df = universal_data_loader(dataset_url)
+        if df is not None:
+            _set(df, dataset_url[:50], proceed=False)
+            st.rerun()
+        else:
+            st.error("❌ Could not load from URL.")
+    raw_df = st.session_state.get("raw_df")
+
+elif st.session_state.get("raw_df") is not None:
+    # ── Data already in session (after rerun) ────────────────
+    raw_df = st.session_state.get("raw_df")
+
+else:
+    # ── No data — show sample datasets ───────────────────────
+    raw_df = None
+
+# ── Sample datasets (when no data loaded) ─────────────────────
+if raw_df is None and not st.session_state.get("data_loaded"):
+    with st.expander("👋 New here? Try a sample dataset — no upload needed!", expanded=True):
+        st.markdown("Explore all features instantly with one of these ready-made datasets:")
+        s1, s2, s3 = st.columns(3)
+        if s1.button("📚 Student Performance", use_container_width=True):
+            np.random.seed(42)
+            n = 200
+            sample = pd.DataFrame({
+                "gender": np.random.choice(["male","female"], n),
+                "study_hours": np.random.randint(1,10,n).astype(float),
+                "attendance_%": np.random.randint(60,100,n).astype(float),
+                "prev_score": np.random.randint(40,100,n).astype(float),
+                "test_prep": np.random.choice(["completed","none"], n),
+                "final_score": np.random.randint(40,100,n).astype(float),
+            })
+            _set(sample, "sample_students.csv", proceed=True)
+            st.rerun()
+        if s2.button("🛒 Sample Sales Data", use_container_width=True):
+            np.random.seed(42)
+            n = 200
+            sample = pd.DataFrame({
+                "order_id": [f"ORD-{i:04d}" for i in range(n)],
+                "region": np.random.choice(["North","South","East","West"], n),
+                "category": np.random.choice(["Electronics","Clothing","Food"], n),
+                "quantity": np.random.randint(1,20,n).astype(float),
+                "unit_price": np.random.uniform(10,500,n).round(2),
+                "revenue": np.random.uniform(100,10000,n).round(2),
+            })
+            _set(sample, "sample_sales.csv", proceed=True)
+            st.rerun()
+        if s3.button("👥 Employee HR Data", use_container_width=True):
+            np.random.seed(42)
+            n = 200
+            sample = pd.DataFrame({
+                "emp_id": [f"EMP-{i:03d}" for i in range(n)],
+                "department": np.random.choice(["IT","HR","Finance","Marketing"], n),
+                "experience": np.random.randint(0,20,n).astype(float),
+                "salary": np.random.normal(60000,15000,n).round(0),
+                "performance": np.random.choice(["Excellent","Good","Average","Poor"], n),
+                "attrition": np.random.choice(["Yes","No"], n, p=[0.2,0.8]),
+            })
+            _set(sample, "sample_hr.csv", proceed=True)
+            st.rerun()
+
+# ── Proceed button (single file / URL only) ───────────────────
+if raw_df is not None and not st.session_state.get("data_proceed"):
     fname = st.session_state.get("loaded_file_name","")
     st.info(f"📂 **{fname}** — {raw_df.shape[0]:,} rows × {raw_df.shape[1]} columns")
     if st.button("🚀 Proceed — Analyse This Dataset", type="primary", use_container_width=True):
