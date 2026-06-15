@@ -378,8 +378,8 @@ def _set(df, name, proceed=True):
 raw_df = st.session_state.get("raw_df")
 
 # ── Reset when file removed ──────────────────────────────────
-loaded_name = st.session_state.get("loaded_file_name", "")
-is_merged   = "Merged" in loaded_name or "Stacked" in loaded_name or "Joined" in loaded_name or "Force" in loaded_name
+loaded_name = str(st.session_state.get("loaded_file_name") or "")
+is_merged   = any(x in loaded_name for x in ["Merged","Stacked","Joined","Force"])
 
 # For single file: reset when file is removed (files=[])
 # For merged data: keep until user explicitly removes (no file to remove)
