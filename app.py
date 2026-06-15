@@ -620,13 +620,19 @@ if files and len(files) > 1:
             st.markdown(f"**{len(df_a.columns)} columns match** — rows will be combined.")
 
             if st.button("🔗 Merge All (Stack Rows)", type="primary", use_container_width=False):
-                merged = pd.concat(list(loaded_dfs.values()), ignore_index=True)
-                st.session_state["raw_df"]           = merged
-                st.session_state["loaded_file_name"] = f"Merged ({len(loaded_dfs)} files)"
-                st.session_state["data_loaded"]      = True
-                st.session_state["data_proceed"]     = False
-                st.success(f"✅ Merged! Total: {len(merged):,} rows × {merged.shape[1]} cols")
-                st.rerun()
+                try:
+                    merged = pd.concat(list(loaded_dfs.values()), ignore_index=True)
+                    for key in list(st.session_state.keys()):
+                        if key not in ["feedback_log"]:
+                            del st.session_state[key]
+                    st.session_state["raw_df"]           = merged
+                    st.session_state["loaded_file_name"] = f"Merged ({len(loaded_dfs)} files)"
+                    st.session_state["data_loaded"]      = True
+                    st.session_state["data_proceed"]     = False
+                    st.toast(f"✅ Merged! {len(merged):,} rows × {merged.shape[1]} cols", icon="🔗")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Merge failed: {e}")
 
         elif schema in ("compatible", "partial"):
             # Partial match → offer join or stack
@@ -640,13 +646,19 @@ if files and len(files) > 1:
                 if col_extra:
                     st.warning(f"⚠️ These columns exist in only one file and will have empty values: `{'`, `'.join(list(col_extra)[:5])}`")
                 if st.button("📥 Stack Datasets", type="primary", key="btn_stack"):
-                    merged = pd.concat(list(loaded_dfs.values()), ignore_index=True)
-                    st.session_state["raw_df"]           = merged
-                    st.session_state["loaded_file_name"] = f"Stacked ({len(loaded_dfs)} files)"
-                    st.session_state["data_loaded"]      = True
-                    st.session_state["data_proceed"]     = False
-                    st.success(f"✅ Stacked! {len(merged):,} rows × {merged.shape[1]} cols")
-                    st.rerun()
+                    try:
+                        merged = pd.concat(list(loaded_dfs.values()), ignore_index=True)
+                        for key in list(st.session_state.keys()):
+                            if key not in ["feedback_log"]:
+                                del st.session_state[key]
+                        st.session_state["raw_df"]           = merged
+                        st.session_state["loaded_file_name"] = f"Stacked ({len(loaded_dfs)} files)"
+                        st.session_state["data_loaded"]      = True
+                        st.session_state["data_proceed"]     = False
+                        st.toast(f"✅ Stacked! {len(merged):,} rows × {merged.shape[1]} cols", icon="📥")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Stack failed: {e}")
 
             with tab_join:
                 st.markdown("**Join** — match rows on a common column and combine columns side by side.")
@@ -687,12 +699,19 @@ if files and len(files) > 1:
             with sel_col2:
                 st.markdown("**Force stack (fill missing with empty):**")
                 if st.button("📥 Force Stack Anyway", key="force_stack", use_container_width=True):
-                    merged = pd.concat(list(loaded_dfs.values()), ignore_index=True)
-                    st.session_state["raw_df"]           = merged
-                    st.session_state["loaded_file_name"] = f"Force Stacked ({len(loaded_dfs)} files)"
-                    st.session_state["data_loaded"]      = True
-                    st.session_state["data_proceed"]     = False
-                    st.rerun()
+                    try:
+                        merged = pd.concat(list(loaded_dfs.values()), ignore_index=True)
+                        for key in list(st.session_state.keys()):
+                            if key not in ["feedback_log"]:
+                                del st.session_state[key]
+                        st.session_state["raw_df"]           = merged
+                        st.session_state["loaded_file_name"] = f"Force Stacked ({len(loaded_dfs)} files)"
+                        st.session_state["data_loaded"]      = True
+                        st.session_state["data_proceed"]     = False
+                        st.toast("✅ Force stacked!", icon="📥")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Stack failed: {e}")
 
         st.stop()
 
