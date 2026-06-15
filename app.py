@@ -628,7 +628,7 @@ if files and len(files) > 1:
                     st.session_state["raw_df"]           = merged
                     st.session_state["loaded_file_name"] = f"Merged ({len(loaded_dfs)} files)"
                     st.session_state["data_loaded"]      = True
-                    st.session_state["data_proceed"]     = False
+                    st.session_state["data_proceed"]     = True
                     st.toast(f"✅ Merged! {len(merged):,} rows × {merged.shape[1]} cols", icon="🔗")
                     st.rerun()
                 except Exception as e:
@@ -654,7 +654,7 @@ if files and len(files) > 1:
                         st.session_state["raw_df"]           = merged
                         st.session_state["loaded_file_name"] = f"Stacked ({len(loaded_dfs)} files)"
                         st.session_state["data_loaded"]      = True
-                        st.session_state["data_proceed"]     = False
+                        st.session_state["data_proceed"]     = True
                         st.toast(f"✅ Stacked! {len(merged):,} rows × {merged.shape[1]} cols", icon="📥")
                         st.rerun()
                     except Exception as e:
@@ -674,7 +674,7 @@ if files and len(files) > 1:
                         st.session_state["raw_df"]           = merged
                         st.session_state["loaded_file_name"] = f"Joined ({len(loaded_dfs)} files)"
                         st.session_state["data_loaded"]      = True
-                        st.session_state["data_proceed"]     = False
+                        st.session_state["data_proceed"]     = True
                         st.success(f"✅ Joined! {len(merged):,} rows × {merged.shape[1]} cols")
                         st.rerun()
                     except Exception as e:
@@ -693,7 +693,7 @@ if files and len(files) > 1:
                         st.session_state["raw_df"]           = df
                         st.session_state["loaded_file_name"] = name
                         st.session_state["data_loaded"]      = True
-                        st.session_state["data_proceed"]     = False
+                        st.session_state["data_proceed"]     = True
                         st.rerun()
 
             with sel_col2:
@@ -707,7 +707,7 @@ if files and len(files) > 1:
                         st.session_state["raw_df"]           = merged
                         st.session_state["loaded_file_name"] = f"Force Stacked ({len(loaded_dfs)} files)"
                         st.session_state["data_loaded"]      = True
-                        st.session_state["data_proceed"]     = False
+                        st.session_state["data_proceed"]     = True
                         st.toast("✅ Force stacked!", icon="📥")
                         st.rerun()
                     except Exception as e:
@@ -721,6 +721,10 @@ if files and len(files) > 1:
         st.session_state["raw_df"]           = loaded_dfs[name]
         st.session_state["loaded_file_name"] = name
         st.session_state["data_loaded"]      = True
+
+# Always restore raw_df from session if available
+if raw_df is None and st.session_state.get("raw_df") is not None:
+    raw_df = st.session_state["raw_df"]
 
 # ── Single Proceed Button — shown whenever data is ready ────
 # Only show for single file — multi file has its own flow
