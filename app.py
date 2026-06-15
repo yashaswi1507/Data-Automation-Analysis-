@@ -809,15 +809,10 @@ if files and len(files) > 1:
         st.session_state["loaded_file_name"] = name
         st.session_state["data_loaded"]      = True
 
-# Always restore raw_df from session if available
-if raw_df is None and st.session_state.get("raw_df") is not None:
-    raw_df = st.session_state["raw_df"]
-
-# ── Single Proceed Button — shown whenever data is ready ────
-# Only show for single file — multi file has its own flow
-if raw_df is not None and not st.session_state.get("data_proceed", False) and not (files and len(files) > 1):
+# Proceed button — only for single file/URL (not multi-file merge)
+if raw_df is not None and not st.session_state.get("data_proceed", False):
     fname = st.session_state.get("loaded_file_name","")
-    st.info(f"📂 **{fname}** loaded — {raw_df.shape[0]:,} rows × {raw_df.shape[1]} columns")
+    st.info(f"📂 **{fname}** — {raw_df.shape[0]:,} rows × {raw_df.shape[1]} columns")
     if st.button("🚀 Proceed — Analyse This Dataset", type="primary", use_container_width=True):
         st.session_state["data_proceed"] = True
         st.rerun()
