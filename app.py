@@ -587,6 +587,9 @@ def _compare_schemas(df1, df2):
     else:
         return "different", common
 
+# Debug — remove after fix
+st.write(f"DEBUG: files={len(files) if files else 0}, data_loaded={st.session_state.get('data_loaded')}, data_proceed={st.session_state.get('data_proceed')}")
+
 if files and len(files) > 1:
     # Load all files
     loaded_dfs = {}
