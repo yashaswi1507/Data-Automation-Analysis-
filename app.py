@@ -487,11 +487,14 @@ if not files and not dataset_url and not st.session_state.get("data_loaded"):
     pass  # show upload screen
 
 elif not files and not dataset_url and st.session_state.get("data_loaded"):
-    # File removed — reset everything
-    for key in list(st.session_state.keys()):
-        if key not in ["feedback_log"]:
-            del st.session_state[key]
-    st.rerun()
+    # Reset only if raw_df is also gone (user actually removed file)
+    # If raw_df exists in session (after merge), keep it
+    if st.session_state.get("raw_df") is None:
+        for key in list(st.session_state.keys()):
+            if key not in ["feedback_log"]:
+                del st.session_state[key]
+        st.rerun()
+    # else: raw_df exists (merged data) — continue normally
 
 # ── Multi file upload ─────────────────────────────────────────
 elif files and len(files) > 1:
