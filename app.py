@@ -486,13 +486,9 @@ elif dataset_url:
             st.error("❌ Could not load from URL.")
     raw_df = st.session_state.get("raw_df")
 
-elif st.session_state.get("raw_df") is not None:
-    # ── Data already in session (after rerun) ────────────────
-    raw_df = st.session_state.get("raw_df")
-
 else:
-    # ── No data — show sample datasets ───────────────────────
-    raw_df = None
+    # ── No files/URL — restore from session if available ─────
+    raw_df = st.session_state.get("raw_df")
 
 # ── Sample datasets (when no data loaded) ─────────────────────
 if raw_df is None and not st.session_state.get("data_loaded"):
